@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted, onMounted } from "vue";
+import { ref, onUnmounted, onMounted, nextTick } from "vue";
 import type { Ref } from "vue";
 import { WISH } from "@/lib/wish";
 import AccordionSection from "@/components/AccordionSection.vue";
@@ -12,6 +12,7 @@ const Logs = ref([""]);
 const Client = ref(new WISH());
 const MediaStreams: Ref<MediaStream[]> = ref([]);
 const EnableControl = ref(false);
+const HideHeader = ref(false)
 
 async function play() {
   if (Disabled.value) {
@@ -19,13 +20,18 @@ async function play() {
   }
   try {
     Disabled.value = true;
-    MediaStreams.value.pop();
+
     const client = Client.value;
     client.WithEndpoint(Endpoint.value);
+
     const dst = new MediaStream();
     await client.Play(dst);
+    MediaStreams.value.pop();
     MediaStreams.value.push(dst);
+
+    await nextTick()
     EnableControl.value = true;
+    HideHeader.value = true
   } catch (e) {
     Disabled.value = false;
     ErrorMessage.value = (e as Error).message;
@@ -56,6 +62,7 @@ onUnmounted(async () => {
     <div class="hero">
       <div
         class="hero-headline flex flex-col items-center justify-center text-center"
+        v-show="!HideHeader"
       >
         <h1 class="font-bold text-3xl text-gray-900">WHEP Player</h1>
         <p class="font-base text-base text-gray-600">

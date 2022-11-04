@@ -146,7 +146,7 @@ export class WISH implements Client {
       }
       if (pair.local && pair.remote) {
         this.logMessage(
-          `[${track.kind}] Selected Candidate: (local ${pair.local})-(remote ${pair.remote.candidate})`
+          `[${track.kind}] Selected Candidate: (local ${pair.local.address})-(remote ${pair.remote.candidate})`
         );
       }
     };
