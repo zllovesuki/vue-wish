@@ -12,8 +12,8 @@ const notification = useNotificationStore();
 <template>
   <div class="min-h-full">
     <NavBar />
-    <main>
-      <div class="mx-auto max-w-screen-2xl py-6 sm:px-6 lg:px-8">
+    <main class="py-10">
+      <div class="mx-auto max-w-screen-2xl sm:px-6 lg:px-8">
         <RouterView />
       </div>
     </main>

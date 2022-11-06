@@ -24,7 +24,7 @@ const navigation = ref([
 </script>
 
 <template>
-  <Disclosure as="nav" class="bg-gray" v-slot="{ open }">
+  <Disclosure as="nav" class="bg-white shadow-sm" v-slot="{ open }">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="flex h-16 items-center justify-between">
         <div class="flex items-center">
