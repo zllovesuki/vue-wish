@@ -1,10 +1,28 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 
-const Open = ref(false);
-defineProps<{
+const props = defineProps<{
+  expandable?: boolean;
   title: string;
 }>();
+
+const Open = ref(false);
+
+const canExpand = computed(() => {
+  if (typeof props.expandable !== "undefined") {
+    return props.expandable;
+  }
+  return true;
+});
+
+function toggle() {
+  if (typeof props.expandable !== "undefined") {
+    if (!props.expandable) {
+      return;
+    }
+  }
+  Open.value = !Open.value;
+}
 </script>
 
 <template>
@@ -16,8 +34,11 @@ defineProps<{
       ]"
     >
       <header
-        class="flex justify-between items-center p-5 pl-8 pr-8 cursor-pointer select-none"
-        @click="Open = !Open"
+        :class="[
+          canExpand ? 'cursor-pointer' : 'cursor-not-allowed',
+          'flex justify-between items-center p-5 pl-8 pr-8 select-none',
+        ]"
+        @click="toggle"
       >
         <span
           :class="[

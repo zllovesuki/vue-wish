@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { ref, onUnmounted, onMounted, nextTick } from "vue";
-import type { Ref } from "vue";
-import { WISH } from "@/lib/wish";
 import AccordionSection from "@/components/AccordionSection.vue";
+import PlayIcon from "@/components/icons/PlayIcon.vue";
+import { ref, onUnmounted, onMounted, nextTick } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import type { Ref } from "vue";
+
+import { WISH } from "@/lib/wish";
 
 const Endpoint = ref("");
 const Disabled = ref(false);
 const ErrorMessage = ref("");
-const Logs = ref([""]);
+const Logs: Ref<string[]> = ref([]);
 
 const Client = ref(new WISH());
 const MediaStreams: Ref<MediaStream[]> = ref([]);
 const EnableControl = ref(false);
-const HideHeader = ref(false)
+const HideHeader = ref(false);
+
+const route = useRoute();
+const router = useRouter();
 
 async function play() {
   if (Disabled.value) {
@@ -28,10 +34,16 @@ async function play() {
     await client.Play(dst);
     MediaStreams.value.pop();
     MediaStreams.value.push(dst);
+    ErrorMessage.value = "";
 
-    await nextTick()
+    await nextTick();
     EnableControl.value = true;
-    HideHeader.value = true
+    HideHeader.value = true;
+    router.push({
+      query: {
+        v: Endpoint.value,
+      },
+    });
   } catch (e) {
     Disabled.value = false;
     ErrorMessage.value = (e as Error).message;
@@ -43,8 +55,10 @@ onMounted(() => {
   client.SetLogListener((log: string) => {
     Logs.value.push(log);
   });
-  const empty = new MediaStream();
-  MediaStreams.value.push(empty);
+
+  if (typeof route.query.v === "string") {
+    Endpoint.value = route.query.v;
+  }
 });
 
 onUnmounted(async () => {
@@ -64,7 +78,14 @@ onUnmounted(async () => {
         class="hero-headline flex flex-col items-center justify-center text-center"
         v-show="!HideHeader"
       >
-        <h1 class="font-bold text-3xl text-gray-900">WHEP Player</h1>
+        <h1 class="font-bold text-3xl text-gray-900">
+          Watch via
+          <a
+            href="https://datatracker.ietf.org/doc/draft-murillo-whep/"
+            target="_blank"
+            >WHEP</a
+          >
+        </h1>
         <p class="font-base text-base text-gray-600">
           Play an WebRTC stream with sub-second latency
         </p>
@@ -80,21 +101,12 @@ onUnmounted(async () => {
               class="outline-none focus:outline-none"
               :disabled="Disabled"
             >
-              <svg
+              <PlayIcon
                 :class="[
                   Disabled ? '' : 'cursor-pointer',
-                  'w-5 text-gray-600 h-5',
+                  'w-8 text-gray-600 h-8',
                 ]"
-                fill="currentColor"
-                viewBox="0 0 16 16"
-              >
-                <path
-                  d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"
-                />
-                <path
-                  d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"
-                />
-              </svg>
+              />
             </button>
             <input
               type="play"
@@ -109,14 +121,17 @@ onUnmounted(async () => {
             />
           </div>
         </div>
-
         <div
           class="flex items-center justify-center text-center pt-5"
           v-show="ErrorMessage != ''"
         >
           {{ ErrorMessage }}
         </div>
-
+        <div class="block" aria-hidden="true">
+          <div class="py-5">
+            <div class="border-t border-gray-200" />
+          </div>
+        </div>
         <section
           id="player-container"
           class="my-5 justify-center items-center flex"
@@ -130,10 +145,12 @@ onUnmounted(async () => {
             autoplay="true"
           />
         </section>
-
         <section class="w-4/5 p-8 mx-auto pt-10 justify-center items-center">
-          <AccordionSection :title="'Connection History'">
-            <ul class="pl-4">
+          <AccordionSection
+            :title="`Connection History (${Logs.length})`"
+            :expandable="Logs.length > 0"
+          >
+            <ul class="pt-4">
               <li class="pb-2" v-for="(log, index) in Logs" :key="index">
                 {{ log }}
               </li>

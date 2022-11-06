@@ -10,11 +10,15 @@ const router = useRouter();
 const navigation = ref([
   {
     name: "Home",
-    to: "/",
+    to: "home",
   },
   {
-    name: "Player",
-    to: "/player",
+    name: "Watch",
+    to: "watch",
+  },
+  {
+    name: "Go Live!",
+    to: "live",
   },
 ]);
 </script>
@@ -47,14 +51,14 @@ const navigation = ref([
               <RouterLink
                 v-for="nav in navigation"
                 :key="nav.name"
-                :to="nav.to"
+                :to="{ name: nav.to }"
                 :class="[
-                  route.path === nav.to
+                  route.name === nav.to
                     ? 'bg-gray-900 text-white'
                     : 'text-black hover:bg-gray-500 hover:text-white',
                   'px-3 py-2 rounded-md text-sm font-medium',
                 ]"
-                :aria-current="route.path === nav.to ? 'page' : undefined"
+                :aria-current="route.name === nav.to ? 'page' : undefined"
                 >{{ nav.name }}
               </RouterLink>
             </div>

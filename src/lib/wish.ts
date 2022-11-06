@@ -251,7 +251,7 @@ export class WISH implements Client {
       return;
     }
     for (const track of src.getTracks()) {
-      this.logMessage(`Adding local track: ${track}`);
+      this.logMessage(`Adding local ${track.kind} track`);
       this.peerConnection.addTransceiver(track, {
         direction: "sendonly",
       });
