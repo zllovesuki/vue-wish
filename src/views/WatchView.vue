@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { useNotificationStore } from "@/store/notification";
-import AccordionSection from "@/components/AccordionSection.vue";
-import AlertSection from "@/components/AlertSection.vue";
-import { PlayIcon } from "@heroicons/vue/24/outline";
+import { useSettingStore } from "@/store/setting";
+
 import { ref, onUnmounted, onMounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { Ref } from "vue";
 
+import AccordionSection from "@/components/AccordionSection.vue";
+import AlertSection from "@/components/AlertSection.vue";
+import SmallToggleGroup from "@/components/SmallToggleGroup.vue";
+import { PlayIcon } from "@heroicons/vue/24/outline";
+
 import { WISH } from "@/lib/wish";
 
 const notification = useNotificationStore();
+const setting = useSettingStore();
 
 const Endpoint = ref("");
 const Disabled = ref(false);
@@ -32,7 +37,7 @@ async function play() {
     Disabled.value = true;
 
     const client = Client.value;
-    client.WithEndpoint(Endpoint.value);
+    client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const dst = new MediaStream();
     await client.Play(dst);
@@ -128,6 +133,11 @@ onUnmounted(async () => {
                 Disabled ? 'text-gray-400' : '',
                 'w-full pl-4 text-sm outline-none focus:outline-none bg-transparent',
               ]"
+            />
+            <SmallToggleGroup
+              :enabled="setting.trickle"
+              @update:enabled="setting.trickle = $event"
+              label="Trickle"
             />
           </div>
         </div>

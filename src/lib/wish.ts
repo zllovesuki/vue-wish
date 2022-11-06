@@ -1,4 +1,5 @@
 import adapter from "webrtc-adapter";
+import { CandidateInfo, SDPInfo } from "semantic-sdp";
 
 export const DEFAULT_ICE_SERVERS = ["stun:stun.cloudflare.com:3478"];
 
@@ -8,7 +9,7 @@ enum Mode {
 }
 
 export interface Client {
-  WithEndpoint: (endpoint: string) => void;
+  WithEndpoint: (endpoint: string, trickle: boolean) => void;
   Disconnect: () => Promise<void>;
   Play: (dst: MediaStream) => Promise<void>;
   Publish: (src: MediaStream) => Promise<void>;
@@ -30,6 +31,8 @@ export class WISH implements Client {
   private endpoint?: string;
   private resourceURL?: string;
   private mode: Mode = Mode.Player;
+  private parsedOffer?: SDPInfo;
+  private useTrickle: boolean = false;
 
   private logListener?: (log: string) => void;
 
@@ -54,6 +57,9 @@ export class WISH implements Client {
     if (this.peerConnection) {
       this.logMessage("Closing RTCPeerConnection");
       this.peerConnection.close();
+      this.peerConnection = undefined;
+      this.resourceURL = "";
+      this.parsedOffer = undefined;
     }
   }
 
@@ -101,6 +107,10 @@ export class WISH implements Client {
     this.peerConnection.addEventListener(
       "icegatheringstatechange",
       this.onGatheringStateChange.bind(this)
+    );
+    this.peerConnection.addEventListener(
+      "icecandidate",
+      this.onICECandidate.bind(this)
     );
     this.peerConnection.addEventListener("track", this.onTrack.bind(this));
     this.peerConnection.addEventListener(
@@ -179,6 +189,55 @@ export class WISH implements Client {
     }
   }
 
+  private async onICECandidate(ev: RTCPeerConnectionIceEvent) {
+    if (ev.candidate) {
+      const candidate = ev.candidate;
+      if (!candidate.candidate) {
+        return;
+      }
+      this.logMessage(
+        `Got ICE candidate: ${candidate.candidate.replace("candidate:", "")}`
+      );
+      if (!this.parsedOffer) {
+        return;
+      }
+      if (!this.useTrickle) {
+        return;
+      }
+      if (candidate.candidate.endsWith(".local")) {
+        this.logMessage("Skipping mDNS candidate for trickle ICE");
+        return;
+      }
+      // TODO: batching
+      const fragSDP = new SDPInfo();
+      const candidateObject = CandidateInfo.expand({
+        foundation: candidate.foundation || "",
+        componentId: candidate.component === "rtp" ? 1 : 2,
+        transport: candidate.protocol || "udp",
+        priority: candidate.priority || 0,
+        address: candidate.address || "",
+        port: candidate.port || 0,
+        type: candidate.type || "host",
+        relAddr: candidate.relatedAddress || undefined,
+        relPort:
+          typeof candidate.relatedPort !== "undefined" &&
+          candidate.relatedPort !== null
+            ? candidate.relatedPort.toString()
+            : undefined,
+      });
+      fragSDP.setICE(this.parsedOffer.getICE());
+      fragSDP.addCandidate(candidateObject);
+      const frag = fragSDP.toIceFragmentString();
+      try {
+        await this.doSignalingPATCH(frag);
+      } catch (e) {
+        this.logMessage(`Failed to trickle: ${(e as Error).message}`);
+      }
+    } else {
+      this.logMessage(`End of ICE candidates`);
+    }
+  }
+
   private onSignalingStateChange() {
     if (!this.peerConnection) {
       return;
@@ -205,6 +264,9 @@ export class WISH implements Client {
   }
 
   private onTrack(ev: RTCTrackEvent) {
+    if (this.mode !== Mode.Player) {
+      return;
+    }
     this.remoteTracks.push(ev.track);
 
     if (this.remoteTracks.length === 2) {
@@ -231,15 +293,26 @@ export class WISH implements Client {
       return;
     }
     const localOffer = await this.peerConnection.createOffer();
-    // TODO: trickle
-    await this.peerConnection.setLocalDescription(localOffer);
-    await this.waitForICEGather();
-
-    const offer = this.peerConnection.localDescription;
-    if (!offer) {
-      throw new Error("no LocalDescription");
+    if (!localOffer.sdp) {
+      throw new Error("Fail to create offer");
     }
-    const remoteOffer = await this.doSignalingPOST(offer.sdp);
+
+    this.parsedOffer = SDPInfo.parse(localOffer.sdp);
+
+    let remoteOffer: string = "";
+    if (!this.useTrickle) {
+      await this.peerConnection.setLocalDescription(localOffer);
+      await this.waitForICEGather();
+      const offer = this.peerConnection.localDescription;
+      if (!offer) {
+        throw new Error("no LocalDescription");
+      }
+      remoteOffer = await this.doSignalingPOST(offer.sdp);
+    } else {
+      // ensure that resourceURL is set before trickle happens
+      remoteOffer = await this.doSignalingPOST(localOffer.sdp);
+      await this.peerConnection.setLocalDescription(localOffer);
+    }
     await this.peerConnection.setRemoteDescription({
       sdp: remoteOffer,
       type: "answer",
@@ -326,13 +399,15 @@ export class WISH implements Client {
     }
   }
 
-  WithEndpoint(endpoint: string) {
+  WithEndpoint(endpoint: string, trickle: boolean) {
     if (endpoint === "") {
       throw new Error("Endpoint cannot be empty");
     }
     try {
       const parsed = new URL(endpoint);
       this.logMessage(`Using ${parsed.toString()} as the WHIP/WHEP Endpoint`);
+      this.useTrickle = trickle;
+      this.logMessage(`${trickle ? "Enabling" : "Disabling"} trickle ICE`);
     } catch (e) {
       throw new Error("Invalid Endpoint URL");
     }

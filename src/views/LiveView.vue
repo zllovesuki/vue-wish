@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { useNotificationStore } from "@/store/notification";
+import { useSettingStore } from "@/store/setting";
+
+import { ref, onUnmounted, onMounted, computed, nextTick, type Ref } from "vue";
+
 import AccordionSection from "@/components/AccordionSection.vue";
 import AlertSection from "@/components/AlertSection.vue";
+import SmallToggleGroup from "@/components/SmallToggleGroup.vue";
 import { VideoCameraIcon } from "@heroicons/vue/24/outline";
-import { ref, onUnmounted, onMounted, computed, nextTick, type Ref } from "vue";
 
 import { WISH } from "@/lib/wish";
 
 const notification = useNotificationStore();
+const setting = useSettingStore();
 
 const Endpoint = ref("");
 const Disabled = ref(false);
@@ -77,7 +82,7 @@ async function publish() {
     Disabled.value = true;
 
     const client = Client.value;
-    client.WithEndpoint(Endpoint.value);
+    client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const src = new MediaStream();
     src.addTrack(VideoSource.value.getTracks()[0]);
@@ -172,6 +177,11 @@ onUnmounted(async () => {
                 Disabled ? 'text-gray-400' : '',
                 'w-full pl-4 text-sm outline-none focus:outline-none bg-transparent',
               ]"
+            />
+            <SmallToggleGroup
+              :enabled="setting.trickle"
+              @update:enabled="setting.trickle = $event"
+              label="Trickle"
             />
           </div>
         </div>
