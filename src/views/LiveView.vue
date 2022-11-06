@@ -1,12 +1,13 @@
 <script setup lang="ts">
+import { useNotificationStore } from "@/store/notification";
 import AccordionSection from "@/components/AccordionSection.vue";
-import LiveIcon from "@/components/icons/LiveIcon.vue";
-import CheckIcon from "@/components/icons/CheckIcon.vue";
-import CrossIcon from "@/components/icons/CrossIcon.vue";
-import { ref, onUnmounted, onMounted, computed, nextTick } from "vue";
-import type { Ref } from "vue";
+import AlertSection from "@/components/AlertSection.vue";
+import { VideoCameraIcon } from "@heroicons/vue/24/outline";
+import { ref, onUnmounted, onMounted, computed, nextTick, type Ref } from "vue";
 
 import { WISH } from "@/lib/wish";
+
+const notification = useNotificationStore();
 
 const Endpoint = ref("");
 const Disabled = ref(false);
@@ -45,7 +46,7 @@ async function getVideo() {
     }
     ErrorMessage.value = "";
   } catch (e) {
-    ErrorMessage.value = (e as Error).message;
+    ErrorMessage.value = `Permission error: ${(e as Error).message}`;
   }
 }
 
@@ -61,7 +62,7 @@ async function getAudio() {
     AudioSource.value = stream;
     ErrorMessage.value = "";
   } catch (e) {
-    ErrorMessage.value = (e as Error).message;
+    ErrorMessage.value = `Permission error: ${(e as Error).message}`;
   }
 }
 
@@ -111,10 +112,16 @@ onUnmounted(async () => {
         track.stop();
       });
     }
+    if (!Live.value) {
+      return;
+    }
     const client = Client.value;
     await client.Disconnect();
+    notification.message = "Livestream ended";
+    notification.show = true;
   } catch (e) {
-    console.log((e as Error).message);
+    notification.message = `Fail to end livestream: ${(e as Error).message}`;
+    notification.show = true;
   }
 });
 </script>
@@ -146,7 +153,7 @@ onUnmounted(async () => {
               class="outline-none focus:outline-none"
               :disabled="Disabled || !readyToGoLive"
             >
-              <LiveIcon
+              <VideoCameraIcon
                 :class="[
                   Disabled || !readyToGoLive
                     ? 'cursor-not-allowed'
@@ -169,12 +176,17 @@ onUnmounted(async () => {
           </div>
         </div>
 
-        <div
-          class="flex items-center justify-center text-center pt-5"
-          v-show="ErrorMessage != ''"
-        >
-          {{ ErrorMessage }}
-        </div>
+        <AlertSection
+          class="mt-5"
+          :message="ErrorMessage"
+          level="fail"
+          :on-dismiss="
+            () => {
+              ErrorMessage = '';
+            }
+          "
+          v-show="ErrorMessage !== ''"
+        />
 
         <div class="block" aria-hidden="true">
           <div class="py-5">
@@ -190,11 +202,15 @@ onUnmounted(async () => {
                   Then, you are ready to go live!
                 </h3>
                 <p class="mt-1 text-sm text-gray-600">
-                  Live:
-                  <CheckIcon class="w-4 h-3 inline" v-if="Live" /><CrossIcon
-                    class="w-4 h-3 inline"
-                    v-else
-                  />
+                  <span
+                    :class="
+                      'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
+                      (Live ? 'bg-green-100' : 'bg-red-100') +
+                      ' ' +
+                      (Live ? 'text-green-800' : 'text-red-800')
+                    "
+                    >Live</span
+                  >
                 </p>
               </div>
             </div>
@@ -233,18 +249,24 @@ onUnmounted(async () => {
                   First, choose stream sources
                 </h3>
                 <p class="mt-1 text-sm text-gray-600">
-                  Video:
-                  <CheckIcon class="w-4 h-3 inline" v-if="hasVideo" /><CrossIcon
-                    class="w-4 h-3 inline"
-                    v-else
-                  />
-                </p>
-                <p class="mt-1 text-sm text-gray-600">
-                  Audio:
-                  <CheckIcon class="w-4 h-3 inline" v-if="hasAudio" /><CrossIcon
-                    class="w-4 h-3 inline"
-                    v-else
-                  />
+                  <span
+                    :class="
+                      'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
+                      (hasVideo ? 'bg-green-100' : 'bg-red-100') +
+                      ' ' +
+                      (hasVideo ? 'text-green-800' : 'text-red-800')
+                    "
+                    >Video</span
+                  >
+                  <span
+                    :class="
+                      'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
+                      (hasAudio ? 'bg-green-100' : 'bg-red-100') +
+                      ' ' +
+                      (hasAudio ? 'text-green-800' : 'text-red-800')
+                    "
+                    >Audio</span
+                  >
                 </p>
               </div>
             </div>

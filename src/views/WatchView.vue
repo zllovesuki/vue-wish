@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import { useNotificationStore } from "@/store/notification";
 import AccordionSection from "@/components/AccordionSection.vue";
-import PlayIcon from "@/components/icons/PlayIcon.vue";
+import AlertSection from "@/components/AlertSection.vue";
+import { PlayIcon } from "@heroicons/vue/24/outline";
 import { ref, onUnmounted, onMounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { Ref } from "vue";
 
 import { WISH } from "@/lib/wish";
+
+const notification = useNotificationStore();
 
 const Endpoint = ref("");
 const Disabled = ref(false);
@@ -62,11 +66,17 @@ onMounted(() => {
 });
 
 onUnmounted(async () => {
+  if (!HideHeader.value) {
+    return;
+  }
   try {
     const client = Client.value;
     await client.Disconnect();
+    notification.message = "Stream disconnected";
+    notification.show = true;
   } catch (e) {
-    console.log((e as Error).message);
+    notification.message = `Fail to disconnect stream: ${(e as Error).message}`;
+    notification.show = true;
   }
 });
 </script>
@@ -121,21 +131,25 @@ onUnmounted(async () => {
             />
           </div>
         </div>
-        <div
-          class="flex items-center justify-center text-center pt-5"
-          v-show="ErrorMessage != ''"
-        >
-          {{ ErrorMessage }}
-        </div>
+
+        <AlertSection
+          class="mt-5"
+          :message="ErrorMessage"
+          level="fail"
+          :on-dismiss="
+            () => {
+              ErrorMessage = '';
+            }
+          "
+          v-show="ErrorMessage !== ''"
+        />
+
         <div class="block" aria-hidden="true">
           <div class="py-5">
             <div class="border-t border-gray-200" />
           </div>
         </div>
-        <section
-          id="player-container"
-          class="my-5 justify-center items-center flex"
-        >
+        <section id="player-container" class="justify-center items-center flex">
           <video
             v-for="src in MediaStreams"
             :key="src.id"
