@@ -26,6 +26,9 @@ const hasVideo = computed(() => {
 const hasAudio = computed(() => {
   return typeof AudioSource.value !== "undefined";
 });
+const readyToGoLive = computed(() => {
+  return hasAudio.value && hasVideo.value;
+});
 
 async function getVideo() {
   // eslint-disable-next-line no-undef
@@ -136,17 +139,18 @@ onUnmounted(async () => {
       <div class="box pt-6">
         <div class="box-wrapper">
           <div
-            v-show="hasVideo && hasAudio"
             class="bg-white rounded flex items-center p-3 shadow-sm border border-gray-200"
           >
             <button
               @click="publish"
               class="outline-none focus:outline-none"
-              :disabled="Disabled"
+              :disabled="Disabled || !readyToGoLive"
             >
               <LiveIcon
                 :class="[
-                  Disabled ? '' : 'cursor-pointer',
+                  Disabled || !readyToGoLive
+                    ? 'cursor-not-allowed'
+                    : 'cursor-pointer',
                   'w-8 text-gray-600 h-8',
                 ]"
               />
@@ -156,7 +160,7 @@ onUnmounted(async () => {
               @keydown.enter="publish"
               placeholder="WHIP Endpoint"
               v-model="Endpoint"
-              :disabled="Disabled"
+              :disabled="Disabled || !readyToGoLive"
               :class="[
                 Disabled ? 'text-gray-400' : '',
                 'w-full pl-4 text-sm outline-none focus:outline-none bg-transparent',
@@ -178,12 +182,55 @@ onUnmounted(async () => {
           </div>
         </div>
 
-        <div>
+        <div v-show="readyToGoLive">
           <div class="md:grid md:grid-cols-3 md:gap-6">
             <div class="md:col-span-1">
               <div class="px-4 sm:px-0">
                 <h3 class="text-lg font-medium leading-6 text-gray-900">
-                  Stream Source
+                  Then, you are ready to go live!
+                </h3>
+                <p class="mt-1 text-sm text-gray-600">
+                  Live:
+                  <CheckIcon class="w-4 h-3 inline" v-if="Live" /><CrossIcon
+                    class="w-4 h-3 inline"
+                    v-else
+                  />
+                </p>
+              </div>
+            </div>
+            <div class="mt-5 md:col-span-2 md:mt-0">
+              <form>
+                <div class="overflow-hidden shadow sm:rounded-md">
+                  <div class="bg-white px-4 py-5 sm:p-6">
+                    <div class="grid grid-none">
+                      <div class="col-span-6 sm:col-span-3">
+                        <label
+                          for="instruction"
+                          class="block text-sm font-medium text-gray-700"
+                          >Enter your WHIP endpoint above and press the Enter
+                          key to go live</label
+                        >
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="hidden sm:block" aria-hidden="true" v-show="readyToGoLive">
+          <div class="py-5">
+            <div class="border-t border-gray-200" />
+          </div>
+        </div>
+
+        <div :class="readyToGoLive ? 'mt-10 sm:mt-0' : ''">
+          <div class="md:grid md:grid-cols-3 md:gap-6">
+            <div class="md:col-span-1">
+              <div class="px-4 sm:px-0">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">
+                  First, choose stream sources
                 </h3>
                 <p class="mt-1 text-sm text-gray-600">
                   Video:
@@ -195,13 +242,6 @@ onUnmounted(async () => {
                 <p class="mt-1 text-sm text-gray-600">
                   Audio:
                   <CheckIcon class="w-4 h-3 inline" v-if="hasAudio" /><CrossIcon
-                    class="w-4 h-3 inline"
-                    v-else
-                  />
-                </p>
-                <p class="mt-1 text-sm text-gray-600">
-                  Live:
-                  <CheckIcon class="w-4 h-3 inline" v-if="Live" /><CrossIcon
                     class="w-4 h-3 inline"
                     v-else
                   />
