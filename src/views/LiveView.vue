@@ -25,6 +25,8 @@ const HideHeader = ref(false);
 const Live = ref(false);
 const VideoSource: Ref<MediaStream | undefined> = ref();
 const AudioSource: Ref<MediaStream | undefined> = ref();
+const VideoEnabled = ref(true);
+const AudioEnabled = ref(true);
 const VideoPreview: Ref<HTMLVideoElement | undefined> = ref();
 const hasVideo = computed(() => {
   return typeof VideoSource.value !== "undefined";
@@ -55,6 +57,13 @@ async function getVideo() {
   }
 }
 
+async function toggleVideo() {
+  if (VideoSource.value) {
+    const track = VideoSource.value.getTracks()[0];
+    VideoEnabled.value = track.enabled = !track.enabled;
+  }
+}
+
 async function getAudio() {
   // eslint-disable-next-line no-undef
   const constraints: MediaStreamConstraints = {
@@ -68,6 +77,13 @@ async function getAudio() {
     ErrorMessage.value = "";
   } catch (e) {
     ErrorMessage.value = `Permission error: ${(e as Error).message}`;
+  }
+}
+
+async function toggleAudio() {
+  if (AudioSource.value) {
+    const track = AudioSource.value.getTracks()[0];
+    AudioEnabled.value = track.enabled = !track.enabled;
   }
 }
 
@@ -85,8 +101,12 @@ async function publish() {
     client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const src = new MediaStream();
-    src.addTrack(VideoSource.value.getTracks()[0]);
-    src.addTrack(AudioSource.value.getTracks()[0]);
+    const videoTrack = VideoSource.value.getTracks()[0];
+    console.log(videoTrack.getSettings());
+    const audioTrack = AudioSource.value.getTracks()[0];
+    console.log(audioTrack.getSettings());
+    src.addTrack(videoTrack);
+    src.addTrack(audioTrack);
     await client.Publish(src);
 
     await nextTick();
@@ -262,18 +282,26 @@ onUnmounted(async () => {
                   <span
                     :class="
                       'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
-                      (hasVideo ? 'bg-green-100' : 'bg-red-100') +
+                      (hasVideo && VideoEnabled
+                        ? 'bg-green-100'
+                        : 'bg-red-100') +
                       ' ' +
-                      (hasVideo ? 'text-green-800' : 'text-red-800')
+                      (hasVideo && VideoEnabled
+                        ? 'text-green-800'
+                        : 'text-red-800')
                     "
                     >Video</span
                   >
                   <span
                     :class="
                       'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
-                      (hasAudio ? 'bg-green-100' : 'bg-red-100') +
+                      (hasAudio && AudioEnabled
+                        ? 'bg-green-100'
+                        : 'bg-red-100') +
                       ' ' +
-                      (hasAudio ? 'text-green-800' : 'text-red-800')
+                      (hasAudio && AudioEnabled
+                        ? 'text-green-800'
+                        : 'text-red-800')
                     "
                     >Audio</span
                   >
@@ -285,22 +313,46 @@ onUnmounted(async () => {
                 <div class="shadow sm:overflow-hidden sm:rounded-md">
                   <div class="space-y-6 bg-white px-4 py-5 sm:p-6">
                     <div>
-                      <button
-                        v-show="!hasVideo"
-                        @click="getVideo"
-                        class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 mx-4 px-4 mb-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                      <span
+                        class="isolate inline-flex rounded-md shadow-sm"
+                        v-show="!readyToGoLive"
                       >
-                        Get Camera Permission
-                      </button>
-                      <button
-                        v-show="!hasAudio"
-                        @click="getAudio"
-                        class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 mx-4 px-4 mb-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        <button
+                          type="button"
+                          @click="getVideo"
+                          class="relative inline-flex items-center rounded-l-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          Get Camera Permission
+                        </button>
+                        <button
+                          type="button"
+                          @click="getAudio"
+                          class="relative -ml-px inline-flex items-center rounded-r-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          Get Microphone Permission
+                        </button>
+                      </span>
+                      <span
+                        class="isolate inline-flex rounded-md shadow-sm"
+                        v-show="readyToGoLive"
                       >
-                        Get Microphone Permission
-                      </button>
+                        <button
+                          type="button"
+                          @click="toggleVideo"
+                          class="relative inline-flex items-center rounded-l-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          Turn {{ VideoEnabled ? "off" : "on " }} Camera
+                        </button>
+                        <button
+                          type="button"
+                          @click="toggleAudio"
+                          class="relative -ml-px inline-flex items-center rounded-r-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          Turn {{ AudioEnabled ? "off" : "on " }} Microphone
+                        </button>
+                      </span>
                       <video
-                        class="flex justify-center pt-2"
+                        class="flex justify-center py-4"
                         ref="VideoPreview"
                         v-show="VideoSource"
                         autoplay
