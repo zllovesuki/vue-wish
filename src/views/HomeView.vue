@@ -6,7 +6,7 @@
       <div class="relative mx-auto max-w-7xl px-4 sm:static sm:px-6 lg:px-8">
         <div class="sm:max-w-lg">
           <h1
-            class="font text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl"
+            class="font text-4xl font-bold tracking-tight text-gray-900 dark:text-gray-300 sm:text-6xl"
           >
             Experience the cutting edge technology
           </h1>

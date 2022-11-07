@@ -7,7 +7,7 @@
     leave-from-class="opacity-100"
     leave-to-class="opacity-0"
   >
-    <div :class="[bgColorClass, 'rounded-md p-4']">
+    <div :class="[...bgColorClasses, 'rounded-md p-4']">
       <div class="flex">
         <div class="flex-shrink-0">
           <CheckCircleIcon
@@ -27,7 +27,9 @@
           />
         </div>
         <div class="ml-3">
-          <p :class="[textColorClass, 'text-sm font-medium']">{{ message }}</p>
+          <p :class="[...textColorClasses, 'text-sm font-medium']">
+            {{ message }}
+          </p>
         </div>
         <div class="ml-auto pl-3">
           <div class="-mx-1.5 -my-1.5">
@@ -57,25 +59,24 @@ import {
   InformationCircleIcon,
   XMarkIcon,
 } from "@heroicons/vue/20/solid";
-
-type Level = "fail" | "success" | "info";
+import type { AlertLevel } from "@/types/level";
 
 const props = defineProps<{
-  level: Level;
+  level: AlertLevel;
   message: string;
   onDismiss: () => void;
 }>();
 
-const bgColorClass = computed(() => {
+const bgColorClasses = computed(() => {
   switch (props.level) {
     case "fail":
-      return "bg-red-50";
+      return ["bg-red-50", "dark:bg-red-300/[0.1]"];
     case "success":
-      return "bg-green-50";
+      return ["bg-green-50", "dark:bg-green-300/[0.1]"];
     case "info":
-      return "bg-blue-50";
+      return ["bg-blue-50", "dark:bg-blue-300/[0.1]"];
     default:
-      return "";
+      return [];
   }
 });
 const iconColorClass = computed(() => {
@@ -90,16 +91,16 @@ const iconColorClass = computed(() => {
       return "";
   }
 });
-const textColorClass = computed(() => {
+const textColorClasses = computed(() => {
   switch (props.level) {
     case "fail":
-      return "text-red-800";
+      return ["text-red-900", "dark:text-red-400"];
     case "success":
-      return "text-green-800";
+      return ["text-green-900", "dark:text-green-400"];
     case "info":
-      return "text-blue-800";
+      return ["text-blue-900", "dark:text-blue-400"];
     default:
-      return "";
+      return [];
   }
 });
 const dismissColorClasses = computed(() => {
@@ -107,6 +108,7 @@ const dismissColorClasses = computed(() => {
     case "fail":
       return [
         "bg-red-50",
+        "dark:bg-red-300/[0.1]",
         "text-red-500",
         "hover:bg-red-100",
         "focus:ring-red-600",
@@ -115,6 +117,7 @@ const dismissColorClasses = computed(() => {
     case "success":
       return [
         "bg-green-50",
+        "dark:bg-green-300/[0.1]",
         "text-green-500",
         "hover:bg-green-100",
         "focus:ring-green-600",
@@ -123,6 +126,7 @@ const dismissColorClasses = computed(() => {
     case "info":
       return [
         "bg-blue-50",
+        "dark:bg-blue-300/[0.1]",
         "text-blue-500",
         "hover:bg-blue-100",
         "focus:ring-blue-600",

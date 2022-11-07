@@ -26,10 +26,12 @@ function toggle() {
 </script>
 
 <template>
-  <article class="border-b">
+  <article class="border-b border-gray-200 dark:border-gray-800">
     <div
       :class="[
-        Open ? 'bg-grey-lightest border-indigo-600' : 'border-transparent',
+        Open
+          ? 'bg-gray-100 dark:bg-gray-800 border-indigo-600'
+          : 'border-transparent',
         'border-l-2',
       ]"
     >
@@ -42,15 +44,19 @@ function toggle() {
       >
         <span
           :class="[
-            Open ? 'text-indigo-600' : 'text-grey-darkest',
-            'font-thin text-xl',
+            Open
+              ? 'text-indigo-600 dark:text-indigo-300'
+              : 'text-gray-900 dark:text-gray-300',
+            'font-light text-xl',
           ]"
         >
           {{ title }}
         </span>
         <div
           :class="[
-            Open ? 'border-indigo-600 bg-indigo-600' : 'border-grey',
+            Open
+              ? 'border-indigo-600 bg-indigo-600'
+              : 'border-gray-200 dark:border-gray-700',
             'rounded-full border w-7 h-7 flex items-center justify-center',
           ]"
         >
@@ -74,7 +80,9 @@ function toggle() {
         </div>
       </header>
       <div v-show="Open">
-        <div class="pl-8 pr-8 pb-5 text-grey-darkest text-sm bg-white">
+        <div
+          class="pl-8 pr-8 pb-5 text-gray-900 text-sm bg-white dark:bg-slate-900 dark:text-gray-300"
+        >
           <slot></slot>
         </div>
       </div>

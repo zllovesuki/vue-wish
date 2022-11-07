@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { useSettingStore } from "@/store/setting";
 import { Disclosure, DisclosureButton, DisclosurePanel } from "@headlessui/vue";
+import { SunIcon, MoonIcon } from "@heroicons/vue/20/solid";
 import { Bars3Icon, XMarkIcon } from "@heroicons/vue/24/outline";
 import { ref } from "vue";
 import { RouterLink } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
+
+const setting = useSettingStore();
 
 const route = useRoute();
 const router = useRouter();
@@ -24,16 +28,21 @@ const navigation = ref([
 </script>
 
 <template>
-  <Disclosure as="nav" class="bg-white shadow-sm" v-slot="{ open }">
+  <Disclosure
+    as="nav"
+    class="bg-white dark:bg-slate-800 shadow-sm"
+    v-slot="{ open }"
+  >
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="flex h-16 items-center justify-between">
         <div class="flex items-center">
           <div class="flex-shrink-0">
             <svg
-              width="24px"
-              height="24px"
+              width="32px"
+              height="32px"
               viewBox="0 0 24 24"
               role="img"
+              class="fill-black dark:fill-white"
               xmlns="http://www.w3.org/2000/svg"
             >
               <path
@@ -49,9 +58,9 @@ const navigation = ref([
                 :to="{ name: nav.to }"
                 :class="[
                   route.name === nav.to
-                    ? 'bg-gray-900 text-white'
-                    : 'text-black hover:bg-gray-500 hover:text-white',
-                  'px-3 py-2 rounded-md text-sm font-medium',
+                    ? 'bg-gray-900 dark:bg-gray-700 text-white dark:text-white'
+                    : 'text-black dark:text-slate-300 hover:text-white',
+                  'px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-500',
                 ]"
                 :aria-current="route.name === nav.to ? 'page' : undefined"
                 >{{ nav.name }}
@@ -59,9 +68,31 @@ const navigation = ref([
             </div>
           </div>
         </div>
+        <div class="hidden md:block">
+          <div class="ml-4 flex items-center md:ml-6">
+            <button
+              type="button"
+              @click="setting.darkMode = !setting.darkMode"
+              class="rounded-full p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-200 focus:outline-none focus:ring-0 focus:ring-offset-0"
+            >
+              <span class="sr-only">Dark mode</span>
+              <SunIcon
+                class="w-6 h-6"
+                v-show="setting.darkMode"
+                aria-hidden="true"
+              />
+              <MoonIcon
+                class="w-6 h-6"
+                v-show="!setting.darkMode"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </div>
         <div class="-mr-2 flex md:hidden">
+          <!-- Mobile menu button -->
           <DisclosureButton
-            class="inline-flex items-center justify-center rounded-md bg-gray-800 p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800"
+            class="inline-flex items-center justify-center rounded-md bg-gray-800 p-2 text-gray-400 hover:bg-gray-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800"
           >
             <span class="sr-only">Open main menu</span>
             <Bars3Icon v-if="!open" class="block h-6 w-6" aria-hidden="true" />
@@ -71,22 +102,44 @@ const navigation = ref([
       </div>
     </div>
 
+    <!-- Mobile Menu -->
     <DisclosurePanel class="md:hidden">
       <div class="space-y-1 px-2 pt-2 pb-3 sm:px-3">
         <DisclosureButton
           v-for="nav in navigation"
           :key="nav.name"
           as="a"
-          @click="router.push({ path: nav.to })"
+          @click="router.push({ name: nav.to })"
           :class="[
-            route.path === nav.to
-              ? 'bg-gray-900 text-white'
-              : 'text-black hover:bg-gray-500 hover:text-white',
-            'block px-3 py-2 rounded-md text-base font-medium',
+            route.name === nav.to
+              ? 'bg-gray-900 dark:bg-gray-600 text-white dark:text-white'
+              : 'text-black dark:text-slate-300 hover:text-white',
+            'block px-3 py-2 rounded-md text-base font-medium hover:bg-gray-500',
           ]"
-          :aria-current="route.path === nav.to ? 'page' : undefined"
+          :aria-current="route.name === nav.to ? 'page' : undefined"
           >{{ nav.name }}</DisclosureButton
         >
+      </div>
+      <div class="border-t border-gray-700 pt-4 pb-3">
+        <div class="flex items-center px-5">
+          <button
+            type="button"
+            @click="setting.darkMode = !setting.darkMode"
+            class="ml-auto flex-shrink-0 rounded-full p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-200 focus:outline-none focus:ring-0 focus:ring-offset-0"
+          >
+            <span class="sr-only">Dark mode</span>
+            <SunIcon
+              class="w-6 h-6"
+              v-show="setting.darkMode"
+              aria-hidden="true"
+            />
+            <MoonIcon
+              class="w-6 h-6"
+              v-show="!setting.darkMode"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
       </div>
     </DisclosurePanel>
   </Disclosure>

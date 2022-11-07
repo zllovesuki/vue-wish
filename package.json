@@ -28,7 +28,6 @@
     "buffer": "^6.0.3",
     "eslint": "^8.22.0",
     "eslint-plugin-vue": "^9.3.0",
-    "normalize.css": "^8.0.1",
     "npm-run-all": "^4.1.5",
     "pinia": "^2.0.23",
     "pinia-plugin-persistedstate": "^2.3.0",

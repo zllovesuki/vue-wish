@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import "@/assets/main.css";
-import NavBar from "@/components/NavBar.vue";
+import Nav from "@/components/NavBar.vue";
+import Footer from "@/components/FooterSection.vue";
 import { XMarkIcon } from "@heroicons/vue/20/solid";
 import { RouterView } from "vue-router";
 
@@ -11,12 +12,13 @@ const notification = useNotificationStore();
 
 <template>
   <div class="min-h-full">
-    <NavBar />
-    <main class="py-10">
+    <Nav />
+    <main class="py-10 dark:bg-slate-900">
       <div class="mx-auto max-w-screen-2xl sm:px-6 lg:px-8">
         <RouterView />
       </div>
     </main>
+    <Footer />
     <div
       aria-live="assertive"
       class="pointer-events-none fixed inset-0 flex items-end px-4 py-6 sm:items-start sm:p-6"
@@ -32,12 +34,14 @@ const notification = useNotificationStore();
         >
           <div
             v-if="notification.show"
-            class="pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5"
+            class="pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg bg-white dark:bg-slate-700 shadow-lg ring-1 ring-black ring-opacity-5"
           >
             <div class="p-4">
               <div class="flex items-center">
                 <div class="flex w-0 flex-1 justify-between">
-                  <p class="w-0 flex-1 text-sm font-medium text-gray-900">
+                  <p
+                    class="w-0 flex-1 text-sm font-medium text-gray-900 dark:text-gray-200"
+                  >
                     {{ notification.message }}
                   </p>
                 </div>
@@ -45,7 +49,7 @@ const notification = useNotificationStore();
                   <button
                     type="button"
                     @click="notification.show = false"
-                    class="inline-flex rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    class="inline-flex rounded-md bg-white dark:bg-slate-700 text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                   >
                     <span class="sr-only">Close</span>
                     <XMarkIcon class="h-5 w-5" aria-hidden="true" />
