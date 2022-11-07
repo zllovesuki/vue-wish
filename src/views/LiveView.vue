@@ -237,7 +237,7 @@ onUnmounted(async () => {
                 <h3 class="text-lg font-medium leading-6 text-gray-900">
                   Then, you are ready to go live!
                 </h3>
-                <p class="mt-1 text-sm text-gray-600">
+                <p class="mt-2 text-sm text-gray-600">
                   <span
                     :class="
                       'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
@@ -284,7 +284,7 @@ onUnmounted(async () => {
                 <h3 class="text-lg font-medium leading-6 text-gray-900">
                   First, choose stream sources
                 </h3>
-                <p class="mt-1 text-sm text-gray-600">
+                <p class="mt-2 text-sm text-gray-600">
                   <span
                     :class="
                       'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
