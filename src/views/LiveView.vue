@@ -237,6 +237,11 @@ onMounted(async () => {
 });
 
 onUnmounted(async () => {
+  if (RearCamera.value) {
+    RearCamera.value.getTracks().forEach((track) => {
+      track.stop();
+    });
+  }
   if (VideoSource.value) {
     VideoSource.value.getTracks().forEach((track) => {
       track.stop();
