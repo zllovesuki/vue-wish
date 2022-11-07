@@ -5,6 +5,7 @@ import { useSettingStore } from "@/store/setting";
 import { ref, onUnmounted, onMounted, computed, nextTick, type Ref } from "vue";
 
 import AddressBar from "@/components/AddressBar.vue";
+import StatusBadge from "@/components/StatusBadge.vue";
 import AccordionSection from "@/components/AccordionSection.vue";
 import AlertSection from "@/components/AlertSection.vue";
 import HorizontalDivider from "@/components/HorizontalDivider.vue";
@@ -64,13 +65,13 @@ async function getVideo() {
     video: true,
   };
 
+  clearAlert();
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     VideoSource.value = stream;
     if (VideoPreview.value) {
       VideoPreview.value.srcObject = stream;
     }
-    clearAlert();
   } catch (e) {
     setAlert("fail", `Permission error: ${(e as Error).message}`);
   }
@@ -90,10 +91,10 @@ async function getAudio() {
     video: false,
   };
 
+  clearAlert();
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     AudioSource.value = stream;
-    clearAlert();
   } catch (e) {
     setAlert("fail", `Permission error: ${(e as Error).message}`);
   }
@@ -138,6 +139,23 @@ async function publish() {
   }
 }
 
+async function end() {
+  if (!Live.value) {
+    return
+  }
+  Disabled.value = true
+  try {
+    const client = Client.value;
+    await client.Disconnect();
+    notification.notify("Livestream ended");
+    Live.value = false
+  }catch(e) {
+    notification.notify(`Fail to end livestream: ${(e as Error).message}`);
+  }
+  await nextTick();
+  Disabled.value = false
+}
+
 onMounted(async () => {
   const client = Client.value;
   client.addEventListener("log", (ev) => {
@@ -154,26 +172,17 @@ onMounted(async () => {
 });
 
 onUnmounted(async () => {
-  try {
-    if (VideoSource.value) {
-      VideoSource.value.getTracks().forEach((track) => {
-        track.stop();
-      });
-    }
-    if (AudioSource.value) {
-      AudioSource.value.getTracks().forEach((track) => {
-        track.stop();
-      });
-    }
-    if (!Live.value) {
-      return;
-    }
-    const client = Client.value;
-    await client.Disconnect();
-    notification.notify("Livestream ended");
-  } catch (e) {
-    notification.notify(`Fail to end livestream: ${(e as Error).message}`);
+  if (VideoSource.value) {
+    VideoSource.value.getTracks().forEach((track) => {
+      track.stop();
+    });
   }
+  if (AudioSource.value) {
+    AudioSource.value.getTracks().forEach((track) => {
+      track.stop();
+    });
+  }
+  await end()
 });
 </script>
 
@@ -233,34 +242,38 @@ onUnmounted(async () => {
                 Then, you are ready to go live!
               </h3>
               <p class="mt-2 text-sm text-gray-600">
-                <span
-                  :class="
-                    'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
-                    (Live ? 'bg-green-100' : 'bg-red-100') +
-                    ' ' +
-                    (Live ? 'text-green-800' : 'text-red-800')
-                  "
-                  >Live<BoltIcon
-                    class="ml-1 w-5 h-5"
-                    v-show="Live" /><BoltSlashIcon
-                    class="ml-1 w-5 h-5"
-                    v-show="!Live"
-                /></span>
+                <StatusBadge text="Live" :enabled="Live">
+                  <template #enabled>
+                    <BoltIcon class="ml-1 w-5 h-5" />
+                  </template>
+                  <template #disabled>
+                    <BoltSlashIcon class="ml-1 w-5 h-5" />
+                  </template>
+                </StatusBadge>
               </p>
             </div>
           </div>
           <div class="mt-5 md:col-span-2 md:mt-0">
             <form>
               <div class="overflow-hidden shadow sm:rounded-md">
-                <div class="bg-white dark:bg-inherit px-4 py-5 sm:p-6">
-                  <div class="grid grid-none">
-                    <div class="col-span-6 sm:col-span-3">
-                      <label
-                        for="instruction"
-                        class="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                        >Enter your WHIP endpoint above and press the Enter key
-                        to go live</label
-                      >
+                <div class="bg-white dark:bg-slate-800 px-4 py-5 sm:p-6">
+                  <div class="grid grid-cols-6 gap-6">
+                    <div :class="Live ? 'col-span-6 sm:col-span-3' : 'col-span-12 sm:col-span-6'">
+                      <div class="mt-1 flex items-center">
+                        <span class="inline-block text-sm text-gray-700 dark:text-gray-300">
+                          Enter your WHIP endpoint and press the Enter key
+                        </span>
+                      </div>
+                    </div>
+                    <div class="col-span-6 sm:col-span-3" v-show="Live">
+                        <button
+                          type="button"
+                          @click="end"
+                          :disbled="Disabled"
+                          class="relative inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          End Livestream
+                        </button>
                     </div>
                   </div>
                 </div>
@@ -282,36 +295,22 @@ onUnmounted(async () => {
                 First, choose stream sources
               </h3>
               <p class="mt-2 text-sm text-gray-600">
-                <span
-                  :class="
-                    'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
-                    (hasVideo && VideoEnabled ? 'bg-green-100' : 'bg-red-100') +
-                    ' ' +
-                    (hasVideo && VideoEnabled
-                      ? 'text-green-800'
-                      : 'text-red-800')
-                  "
-                  >Video<EyeIcon
-                    class="ml-1 w-5 h-5"
-                    v-show="hasVideo && VideoEnabled" /><EyeSlashIcon
-                    class="ml-1 w-5 h-5"
-                    v-show="!(hasVideo && VideoEnabled)"
-                /></span>
-                <span
-                  :class="
-                    'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
-                    (hasAudio && AudioEnabled ? 'bg-green-100' : 'bg-red-100') +
-                    ' ' +
-                    (hasAudio && AudioEnabled
-                      ? 'text-green-800'
-                      : 'text-red-800')
-                  "
-                  >Audio<SignalIcon
-                    class="ml-1 w-5 h-5"
-                    v-show="hasAudio && AudioEnabled" /><SignalSlashIcon
-                    class="ml-1 w-5 h-5"
-                    v-show="!(hasAudio && AudioEnabled)"
-                /></span>
+                <StatusBadge text="Video" :enabled="hasVideo && VideoEnabled">
+                  <template #enabled>
+                    <EyeIcon class="ml-1 w-5 h-5" />
+                  </template>
+                  <template #disabled>
+                    <EyeSlashIcon class="ml-1 w-5 h-5" />
+                  </template>
+                </StatusBadge>
+                <StatusBadge text="Audio" :enabled="hasAudio && AudioEnabled">
+                  <template #enabled>
+                    <SignalIcon class="ml-1 w-5 h-5" />
+                  </template>
+                  <template #disabled>
+                    <SignalSlashIcon class="ml-1 w-5 h-5" />
+                  </template>
+                </StatusBadge>
               </p>
             </div>
           </div>
@@ -364,7 +363,7 @@ onUnmounted(async () => {
                     <video
                       class="flex justify-center py-4"
                       ref="VideoPreview"
-                      v-show="VideoSource"
+                      v-show="VideoSource && VideoEnabled"
                       autoplay
                     ></video>
                   </div>
@@ -374,6 +373,8 @@ onUnmounted(async () => {
           </div>
         </div>
       </div>
+
+      <HorizontalDivider />
 
       <section class="w-4/5 p-8 mx-auto pt-10 justify-center items-center">
         <AccordionSection

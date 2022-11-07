@@ -48,9 +48,9 @@ async function play() {
   MediaStreams.value.pop();
   clearAlert();
 
+  Disabled.value = true;
   try {
     EnableControl.value = false;
-    Disabled.value = true;
 
     const client = Client.value;
     if (Playing.value) {
