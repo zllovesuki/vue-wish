@@ -124,9 +124,7 @@ async function getVideo() {
   const constraints: MediaStreamConstraints = {
     audio: false,
     video: {
-      facingMode: {
-        exact: "user",
-      },
+      facingMode: 'user'
     },
   };
 
