@@ -19,6 +19,11 @@ const router = createRouter({
       name: "live",
       component: () => import("@/views/LiveView.vue"),
     },
+    {
+      path: "/:pathMatch(.*)",
+      name: "not-found",
+      component: () => import("@/views/404View.vue"),
+    },
   ],
 });
 
