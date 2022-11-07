@@ -1,5 +1,6 @@
 import adapter from "webrtc-adapter";
 import { CandidateInfo, SDPInfo } from "semantic-sdp";
+import { TypedEventTarget, type StatusEvent, type LogEvent } from "./events";
 
 export const DEFAULT_ICE_SERVERS = ["stun:stun.cloudflare.com:3478"];
 
@@ -8,25 +9,24 @@ enum Mode {
   Publisher = "publisher",
 }
 
-export interface Client {
+export interface Client extends EventTarget {
   WithEndpoint: (endpoint: string, trickle: boolean) => void;
   Disconnect: () => Promise<void>;
-  Play: (dst: MediaStream) => Promise<void>;
+  Play: () => Promise<MediaStream>;
   Publish: (src: MediaStream) => Promise<void>;
-  SetLogListener: (cb: (log: string) => void) => void;
 }
 
-export class WISH implements Client {
+export class WISH extends TypedEventTarget implements Client {
   private peerConnection?: RTCPeerConnection;
   private iceServers: string[] = DEFAULT_ICE_SERVERS;
 
   private remoteTracks: MediaStreamTrack[] = [];
   private playerMedia?: MediaStream;
 
-  private connectedPromise?: Promise<void>;
-  private connectedResolver?: (any: void) => void;
-  private gatherPromise?: Promise<void>;
-  private gatherResolver?: (any: void) => void;
+  private connectedPromise!: Promise<void>;
+  private connectedResolver!: (any: void) => void;
+  private gatherPromise!: Promise<void>;
+  private gatherResolver!: (any: void) => void;
 
   private endpoint?: string;
   private resourceURL?: string;
@@ -34,23 +34,27 @@ export class WISH implements Client {
   private parsedOffer?: SDPInfo;
   private useTrickle: boolean = false;
 
-  private logListener?: (log: string) => void;
-
   constructor(iceServers?: string[]) {
+    super();
     if (iceServers) {
       this.iceServers = iceServers;
     }
     this.logMessage(
       `Enabling webrtc-adapter for ${adapter.browserDetails.browser}@${adapter.browserDetails.version}`
     );
+    this.newResolvers();
   }
 
   private logMessage(str: string) {
     const now = new Date().toLocaleString();
     console.log(`${now}: ${str}`);
-    if (this.logListener) {
-      this.logListener(`${now}: ${str}`);
-    }
+    this.dispatchEvent(
+      new CustomEvent<LogEvent>("log", {
+        detail: {
+          message: str,
+        },
+      })
+    );
   }
 
   private killConnection() {
@@ -58,8 +62,10 @@ export class WISH implements Client {
       this.logMessage("Closing RTCPeerConnection");
       this.peerConnection.close();
       this.peerConnection = undefined;
-      this.resourceURL = "";
       this.parsedOffer = undefined;
+      this.playerMedia = undefined;
+      this.endpoint = "";
+      this.remoteTracks = [];
     }
   }
 
@@ -128,9 +134,7 @@ export class WISH implements Client {
     );
     switch (this.peerConnection.iceGatheringState) {
       case "complete":
-        if (this.gatherResolver) {
-          this.gatherResolver();
-        }
+        this.gatherResolver();
         break;
     }
   }
@@ -185,6 +189,15 @@ export class WISH implements Client {
             }
             break;
         }
+        break;
+      case "failed":
+        this.dispatchEvent(
+          new CustomEvent<StatusEvent>("status", {
+            detail: {
+              status: "disconnected",
+            },
+          })
+        );
         break;
     }
   }
@@ -256,9 +269,14 @@ export class WISH implements Client {
     );
     switch (this.peerConnection.iceConnectionState) {
       case "connected":
-        if (this.connectedResolver) {
-          this.connectedResolver();
-        }
+        this.dispatchEvent(
+          new CustomEvent<StatusEvent>("status", {
+            detail: {
+              status: "connected",
+            },
+          })
+        );
+        this.connectedResolver();
         break;
     }
   }
@@ -281,9 +299,7 @@ export class WISH implements Client {
 
   private async waitForICEGather() {
     setTimeout(() => {
-      if (this.gatherResolver) {
-        this.gatherResolver();
-      }
+      this.gatherResolver();
     }, 1000);
     await this.gatherPromise;
   }
@@ -298,8 +314,8 @@ export class WISH implements Client {
     }
 
     this.parsedOffer = SDPInfo.parse(localOffer.sdp);
-
     let remoteOffer: string = "";
+
     if (!this.useTrickle) {
       await this.peerConnection.setLocalDescription(localOffer);
       await this.waitForICEGather();
@@ -347,7 +363,7 @@ export class WISH implements Client {
 
   private async doSignalingPOST(sdp: string): Promise<string> {
     if (!this.endpoint) {
-      throw new Error("No WHIP/WHEP has been set");
+      throw new Error("No WHIP/WHEP endpoint has been set");
     }
     const resp = await fetch(this.endpoint, {
       method: "POST",
@@ -428,15 +444,17 @@ export class WISH implements Client {
       const body = await resp.text();
       throw new Error(`Unexpected status code ${resp.status}: ${body}`);
     }
+    this.resourceURL = "";
   }
 
-  async Play(dst: MediaStream) {
+  async Play(): Promise<MediaStream> {
     this.mode = Mode.Player;
     this.killConnection();
-    this.playerMedia = dst;
+    this.playerMedia = new MediaStream();
     this.createConnection();
     await this.whepClientOffer();
     await this.connectedPromise;
+    return this.playerMedia;
   }
 
   async Publish(src: MediaStream) {
@@ -445,9 +463,5 @@ export class WISH implements Client {
     this.createConnection();
     await this.whipOffer(src);
     await this.connectedPromise;
-  }
-
-  SetLogListener(cb: (log: string) => void) {
-    this.logListener = cb;
   }
 }

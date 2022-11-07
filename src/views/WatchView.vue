@@ -25,6 +25,7 @@ const Client = ref(new WISH());
 const MediaStreams: Ref<MediaStream[]> = ref([]);
 const EnableControl = ref(false);
 const HideHeader = ref(false);
+const Playing = ref(false);
 
 const route = useRoute();
 const router = useRouter();
@@ -33,36 +34,57 @@ async function play() {
   if (Disabled.value) {
     return;
   }
+  MediaStreams.value.pop();
+
   try {
+    EnableControl.value = false;
     Disabled.value = true;
 
     const client = Client.value;
+    if (Playing.value) {
+      try {
+        await client.Disconnect();
+      } catch (e) {
+        notification.notify(
+          `Error disconnecting previous stream: ${(e as Error).message}`
+        );
+      }
+    }
     client.WithEndpoint(Endpoint.value, setting.trickle);
 
-    const dst = new MediaStream();
-    await client.Play(dst);
-    MediaStreams.value.pop();
+    const dst = await client.Play();
     MediaStreams.value.push(dst);
     ErrorMessage.value = "";
 
     await nextTick();
     EnableControl.value = true;
     HideHeader.value = true;
+    Playing.value = true;
     router.push({
       query: {
         v: Endpoint.value,
       },
     });
   } catch (e) {
-    Disabled.value = false;
     ErrorMessage.value = (e as Error).message;
+    Playing.value = false;
   }
+  await nextTick();
+  Disabled.value = false;
 }
 
 onMounted(() => {
   const client = Client.value;
-  client.SetLogListener((log: string) => {
-    Logs.value.push(log);
+  client.addEventListener("log", (ev) => {
+    const now = new Date().toLocaleString();
+    Logs.value.push(`${now}: ${ev.detail.message}`);
+  });
+  client.addEventListener("status", (ev) => {
+    switch (ev.detail.status) {
+      case "disconnected":
+        ErrorMessage.value = "Disconnected from stream";
+        break;
+    }
   });
 
   if (typeof route.query.v === "string") {
@@ -71,17 +93,15 @@ onMounted(() => {
 });
 
 onUnmounted(async () => {
-  if (!HideHeader.value) {
+  if (!Playing.value) {
     return;
   }
   try {
     const client = Client.value;
     await client.Disconnect();
-    notification.message = "Stream disconnected";
-    notification.show = true;
+    notification.notify("Stream disconnected");
   } catch (e) {
-    notification.message = `Fail to disconnect stream: ${(e as Error).message}`;
-    notification.show = true;
+    notification.notify(`Fail to disconnect stream: ${(e as Error).message}`);
   }
 });
 </script>

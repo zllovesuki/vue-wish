@@ -120,8 +120,16 @@ async function publish() {
 
 onMounted(async () => {
   const client = Client.value;
-  client.SetLogListener((log: string) => {
-    Logs.value.push(log);
+  client.addEventListener("log", (ev) => {
+    const now = new Date().toLocaleString();
+    Logs.value.push(`${now}: ${ev.detail.message}`);
+  });
+  client.addEventListener("status", (ev) => {
+    switch (ev.detail.status) {
+      case "disconnected":
+        ErrorMessage.value = "Disconnected from stream";
+        break;
+    }
   });
 });
 
@@ -142,11 +150,9 @@ onUnmounted(async () => {
     }
     const client = Client.value;
     await client.Disconnect();
-    notification.message = "Livestream ended";
-    notification.show = true;
+    notification.notify("Livestream ended");
   } catch (e) {
-    notification.message = `Fail to end livestream: ${(e as Error).message}`;
-    notification.show = true;
+    notification.notify(`Fail to end livestream: ${(e as Error).message}`);
   }
 });
 </script>
