@@ -64,7 +64,6 @@ export class WISH extends TypedEventTarget implements Client {
       this.peerConnection = undefined;
       this.parsedOffer = undefined;
       this.playerMedia = undefined;
-      this.endpoint = "";
       this.remoteTracks = [];
     }
   }
@@ -432,6 +431,7 @@ export class WISH extends TypedEventTarget implements Client {
   }
 
   async Disconnect() {
+    this.endpoint = "";
     this.killConnection();
     if (!this.resourceURL) {
       throw new Error("No resource URL");
