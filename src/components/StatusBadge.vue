@@ -8,7 +8,7 @@ defineProps<{
 <template>
   <span
     :class="
-      'inline-flex items-center rounded-md mx-2 px-2.5 py-0.5 text-sm font-medium ' +
+      'inline-flex items-center rounded-md mx-2 mb-2 px-2.5 py-0.5 text-sm font-medium ' +
       (enabled
         ? 'bg-green-200 dark:bg-green-400/25'
         : 'bg-red-200 dark:bg-red-400/25') +

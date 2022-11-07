@@ -14,11 +14,14 @@ export interface Client extends EventTarget {
   Disconnect: () => Promise<void>;
   Play: () => Promise<MediaStream>;
   Publish: (src: MediaStream) => Promise<void>;
+  ReplaceVideoTrack: (src: MediaStream) => Promise<void>;
 }
 
 export class WISH extends TypedEventTarget implements Client {
   private peerConnection?: RTCPeerConnection;
   private iceServers: string[] = DEFAULT_ICE_SERVERS;
+
+  private videoSender?: RTCRtpSender;
 
   private remoteTracks: MediaStreamTrack[] = [];
   private playerMedia?: MediaStream;
@@ -64,6 +67,7 @@ export class WISH extends TypedEventTarget implements Client {
       this.peerConnection = undefined;
       this.parsedOffer = undefined;
       this.playerMedia = undefined;
+      this.videoSender = undefined;
       this.remoteTracks = [];
     }
   }
@@ -183,6 +187,9 @@ export class WISH extends TypedEventTarget implements Client {
               }
               if (!sender.track) {
                 continue;
+              }
+              if (sender.track.kind === "video") {
+                this.videoSender = sender;
               }
               transportHandler(sender.track, transport);
             }
@@ -463,5 +470,16 @@ export class WISH extends TypedEventTarget implements Client {
     this.createConnection();
     await this.whipOffer(src);
     await this.connectedPromise;
+  }
+
+  async ReplaceVideoTrack(src: MediaStream) {
+    if (!this.videoSender) {
+      throw new Error("Publisher is not active");
+    }
+    const tracks = src.getTracks();
+    if (tracks.length < 1) {
+      throw new Error("No tracks in MediaStream");
+    }
+    return await this.videoSender.replaceTrack(tracks[0]);
   }
 }

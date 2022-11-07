@@ -11,12 +11,14 @@ import AlertSection from "@/components/AlertSection.vue";
 import HorizontalDivider from "@/components/HorizontalDivider.vue";
 import {
   VideoCameraIcon,
-  BoltIcon,
+  VideoCameraSlashIcon,
+  NoSymbolIcon,
+  SparklesIcon,
   BoltSlashIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
   SignalIcon,
-  SignalSlashIcon,
-  EyeIcon,
-  EyeSlashIcon,
+  PhotoIcon,
 } from "@heroicons/vue/24/outline";
 
 import { WISH } from "@/lib/wish";
@@ -33,11 +35,14 @@ const Client = ref(new WISH());
 const HideHeader = ref(false);
 
 const Live = ref(false);
+const RearCamera: Ref<MediaStream | undefined> = ref();
 const VideoSource: Ref<MediaStream | undefined> = ref();
 const AudioSource: Ref<MediaStream | undefined> = ref();
+const CurrentVideoSource: Ref<MediaStream | undefined> = ref();
 const VideoEnabled = ref(true);
 const AudioEnabled = ref(true);
 const VideoPreview: Ref<HTMLVideoElement | undefined> = ref();
+
 const hasVideo = computed(() => {
   return typeof VideoSource.value !== "undefined";
 });
@@ -58,11 +63,71 @@ function clearAlert() {
   AlertMessage.value = "";
 }
 
+const hasRearCamera = computed(() => {
+  return typeof RearCamera.value !== "undefined";
+});
+const usingRearCamera = computed(() => {
+  if (!RearCamera.value) {
+    return false;
+  }
+  return RearCamera.value === CurrentVideoSource.value;
+});
+async function toggleCameraSource() {
+  if (!RearCamera.value || !VideoSource.value || !CurrentVideoSource.value) {
+    return;
+  }
+
+  const client = Client.value;
+  if (usingRearCamera.value) {
+    RearCamera.value.getTracks()[0].enabled = false;
+    VideoSource.value.getTracks()[0].enabled = true;
+    CurrentVideoSource.value = VideoSource.value;
+  } else {
+    VideoSource.value.getTracks()[0].enabled = false;
+    RearCamera.value.getTracks()[0].enabled = true;
+    CurrentVideoSource.value = RearCamera.value;
+  }
+  if (VideoPreview.value) {
+    VideoPreview.value.srcObject = CurrentVideoSource.value;
+  }
+
+  try {
+    await client.ReplaceVideoTrack(CurrentVideoSource.value);
+  } catch (e) {
+    notification.notify(
+      `Failed to change stream source: ${(e as Error).message}`
+    );
+  }
+}
+
+async function findRearCamera() {
+  try {
+    const backCamera = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: {
+          exact: "environment",
+        },
+      },
+    });
+    RearCamera.value = backCamera;
+  } catch (e) {
+    if (e instanceof OverconstrainedError) {
+      console.log("no rear facing camera");
+    } else {
+      console.log("has rear facing camera");
+    }
+  }
+}
+
 async function getVideo() {
   // eslint-disable-next-line no-undef
   const constraints: MediaStreamConstraints = {
     audio: false,
-    video: true,
+    video: {
+      facingMode: {
+        exact: "user",
+      },
+    },
   };
 
   clearAlert();
@@ -72,14 +137,16 @@ async function getVideo() {
     if (VideoPreview.value) {
       VideoPreview.value.srcObject = stream;
     }
+    CurrentVideoSource.value = stream;
+    await findRearCamera();
   } catch (e) {
     setAlert("fail", `Permission error: ${(e as Error).message}`);
   }
 }
 
 async function toggleVideo() {
-  if (VideoSource.value) {
-    const track = VideoSource.value.getTracks()[0];
+  if (CurrentVideoSource.value) {
+    const track = CurrentVideoSource.value.getTracks()[0];
     VideoEnabled.value = track.enabled = !track.enabled;
   }
 }
@@ -111,7 +178,7 @@ async function publish() {
   if (Disabled.value) {
     return;
   }
-  if (!VideoSource.value || !AudioSource.value) {
+  if (!CurrentVideoSource.value || !AudioSource.value) {
     return;
   }
   clearAlert();
@@ -122,7 +189,7 @@ async function publish() {
     client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const src = new MediaStream();
-    const videoTrack = VideoSource.value.getTracks()[0];
+    const videoTrack = CurrentVideoSource.value.getTracks()[0];
     console.log(videoTrack.getSettings());
     const audioTrack = AudioSource.value.getTracks()[0];
     console.log(audioTrack.getSettings());
@@ -141,19 +208,19 @@ async function publish() {
 
 async function end() {
   if (!Live.value) {
-    return
+    return;
   }
-  Disabled.value = true
   try {
     const client = Client.value;
     await client.Disconnect();
     notification.notify("Livestream ended");
-    Live.value = false
-  }catch(e) {
+
+    await nextTick();
+    Disabled.value = false;
+    Live.value = false;
+  } catch (e) {
     notification.notify(`Fail to end livestream: ${(e as Error).message}`);
   }
-  await nextTick();
-  Disabled.value = false
 }
 
 onMounted(async () => {
@@ -182,7 +249,7 @@ onUnmounted(async () => {
       track.stop();
     });
   }
-  await end()
+  await end();
 });
 </script>
 
@@ -211,7 +278,7 @@ onUnmounted(async () => {
           :value="Endpoint"
           @update:value="Endpoint = $event"
         >
-          <VideoCameraIcon
+          <SignalIcon
             :class="[
               Disabled || !readyToGoLive
                 ? 'cursor-not-allowed'
@@ -244,7 +311,7 @@ onUnmounted(async () => {
               <p class="mt-2 text-sm text-gray-600">
                 <StatusBadge text="Live" :enabled="Live">
                   <template #enabled>
-                    <BoltIcon class="ml-1 w-5 h-5" />
+                    <SparklesIcon class="ml-1 w-5 h-5" />
                   </template>
                   <template #disabled>
                     <BoltSlashIcon class="ml-1 w-5 h-5" />
@@ -258,22 +325,30 @@ onUnmounted(async () => {
               <div class="overflow-hidden shadow sm:rounded-md">
                 <div class="bg-white dark:bg-slate-800 px-4 py-5 sm:p-6">
                   <div class="grid grid-cols-6 gap-6">
-                    <div :class="Live ? 'col-span-6 sm:col-span-3' : 'col-span-12 sm:col-span-6'">
+                    <div
+                      :class="
+                        Live
+                          ? 'col-span-6 sm:col-span-3'
+                          : 'col-span-12 sm:col-span-6'
+                      "
+                    >
                       <div class="mt-1 flex items-center">
-                        <span class="inline-block text-sm text-gray-700 dark:text-gray-300">
+                        <span
+                          class="inline-block text-sm text-gray-700 dark:text-gray-300"
+                        >
                           Enter your WHIP endpoint and press the Enter key
                         </span>
                       </div>
                     </div>
                     <div class="col-span-6 sm:col-span-3" v-show="Live">
-                        <button
-                          type="button"
-                          @click="end"
-                          :disbled="Disabled"
-                          class="relative inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        >
-                          End Livestream
-                        </button>
+                      <button
+                        type="button"
+                        @click="end"
+                        :disbled="Disabled"
+                        class="relative inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        End Livestream
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -297,18 +372,29 @@ onUnmounted(async () => {
               <p class="mt-2 text-sm text-gray-600">
                 <StatusBadge text="Video" :enabled="hasVideo && VideoEnabled">
                   <template #enabled>
-                    <EyeIcon class="ml-1 w-5 h-5" />
+                    <VideoCameraIcon class="ml-1 w-5 h-5" />
                   </template>
                   <template #disabled>
-                    <EyeSlashIcon class="ml-1 w-5 h-5" />
+                    <VideoCameraSlashIcon class="ml-1 w-5 h-5" />
                   </template>
                 </StatusBadge>
                 <StatusBadge text="Audio" :enabled="hasAudio && AudioEnabled">
                   <template #enabled>
-                    <SignalIcon class="ml-1 w-5 h-5" />
+                    <SpeakerWaveIcon class="ml-1 w-5 h-5" />
                   </template>
                   <template #disabled>
-                    <SignalSlashIcon class="ml-1 w-5 h-5" />
+                    <SpeakerXMarkIcon class="ml-1 w-5 h-5" />
+                  </template>
+                </StatusBadge>
+                <StatusBadge
+                  text="Rear Camera"
+                  :enabled="hasVideo && hasRearCamera"
+                >
+                  <template #enabled>
+                    <PhotoIcon class="ml-1 w-5 h-5" />
+                  </template>
+                  <template #disabled>
+                    <NoSymbolIcon class="ml-1 w-5 h-5" />
                   </template>
                 </StatusBadge>
               </p>
@@ -351,6 +437,20 @@ onUnmounted(async () => {
                         class="relative inline-flex items-center rounded-l-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         Turn {{ VideoEnabled ? "off" : "on " }} Camera
+                      </button>
+                      <button
+                        type="button"
+                        @click="toggleCameraSource"
+                        v-show="hasRearCamera"
+                        :disabled="!VideoEnabled"
+                        :class="[
+                          VideoEnabled
+                            ? 'cursor-pointer'
+                            : 'cursor-not-allowed',
+                          'relative -ml-px inline-flex items-center border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
+                        ]"
+                      >
+                        Use {{ usingRearCamera ? "front" : "rear " }} Camera
                       </button>
                       <button
                         type="button"
