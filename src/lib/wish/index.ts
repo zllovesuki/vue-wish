@@ -9,6 +9,8 @@ export const DEFAULT_ICE_SERVERS = [
   "stun:stun.stunprotocol.org:3478",
 ];
 
+export const TRICKLE_BATCH_INTERVAL = 50;
+
 enum Mode {
   Player = "player",
   Publisher = "publisher",
@@ -35,6 +37,9 @@ export class WISH extends TypedEventTarget {
   private useTrickle: boolean = false;
   private etag?: string;
   private providedIceServer?: string;
+
+  private trickleBatchingJob?: number;
+  private batchedCandidates: RTCIceCandidate[] = [];
 
   constructor(iceServers?: string[]) {
     super();
@@ -68,6 +73,8 @@ export class WISH extends TypedEventTarget {
       this.playerMedia = undefined;
       this.videoSender = undefined;
       this.remoteTracks = [];
+      this.batchedCandidates = [];
+      this.stopTrickleBatching();
     }
   }
 
@@ -206,7 +213,7 @@ export class WISH extends TypedEventTarget {
     }
   }
 
-  private async onICECandidate(ev: RTCPeerConnectionIceEvent) {
+  private onICECandidate(ev: RTCPeerConnectionIceEvent) {
     if (ev.candidate) {
       const candidate = ev.candidate;
       if (!candidate.candidate) {
@@ -221,12 +228,51 @@ export class WISH extends TypedEventTarget {
       if (!this.useTrickle) {
         return;
       }
-      if (candidate.candidate.endsWith(".local")) {
+      if (candidate.candidate.includes(".local")) {
         this.logMessage("Skipping mDNS candidate for trickle ICE");
         return;
       }
-      // TODO: batching
-      const fragSDP = new SDPInfo();
+      this.batchedCandidates.push(candidate);
+    } else {
+      this.logMessage(`End of ICE candidates`);
+    }
+  }
+
+  private startTrickleBatching() {
+    if (this.trickleBatchingJob) {
+      clearInterval(this.trickleBatchingJob);
+    }
+    this.logMessage(
+      `Starting batching job to trickle candidates every ${TRICKLE_BATCH_INTERVAL}ms`
+    );
+    this.trickleBatchingJob = setInterval(
+      this.trickleBatch.bind(this),
+      TRICKLE_BATCH_INTERVAL
+    );
+  }
+
+  private stopTrickleBatching() {
+    if (!this.trickleBatchingJob) {
+      return;
+    }
+    this.logMessage("Stopping trickle batching job");
+    clearInterval(this.trickleBatchingJob);
+    this.trickleBatchingJob = undefined;
+  }
+
+  private async trickleBatch() {
+    if (!this.parsedOffer) {
+      return;
+    }
+    if (!this.batchedCandidates.length) {
+      return;
+    }
+
+    const fragSDP = new SDPInfo();
+    const candidates = this.batchedCandidates.splice(0);
+    this.logMessage(`Tricking with ${candidates.length} candidates`);
+
+    for (const candidate of candidates) {
       const candidateObject = CandidateInfo.expand({
         foundation: candidate.foundation || "",
         componentId: candidate.component === "rtp" ? 1 : 2,
@@ -242,16 +288,15 @@ export class WISH extends TypedEventTarget {
             ? candidate.relatedPort.toString()
             : undefined,
       });
-      fragSDP.setICE(this.parsedOffer.getICE());
       fragSDP.addCandidate(candidateObject);
-      const frag = fragSDP.toIceFragmentString();
-      try {
-        await this.doSignalingPATCH(frag, false);
-      } catch (e) {
-        this.logMessage(`Failed to trickle: ${(e as Error).message}`);
-      }
-    } else {
-      this.logMessage(`End of ICE candidates`);
+    }
+    fragSDP.setICE(this.parsedOffer.getICE());
+
+    const frag = fragSDP.toIceFragmentString();
+    try {
+      await this.doSignalingPATCH(frag, false);
+    } catch (e) {
+      this.logMessage(`Failed to trickle: ${(e as Error).message}`);
     }
   }
 
@@ -281,6 +326,7 @@ export class WISH extends TypedEventTarget {
           })
         );
         this.connectedResolver();
+        this.stopTrickleBatching();
         break;
     }
   }
@@ -331,6 +377,7 @@ export class WISH extends TypedEventTarget {
     } else {
       // ensure that resourceURL is set before trickle happens
       remoteOffer = await this.doSignalingPOST(localOffer.sdp);
+      this.startTrickleBatching();
       await this.peerConnection.setLocalDescription(localOffer);
     }
     await this.peerConnection.setRemoteDescription({
@@ -417,10 +464,14 @@ export class WISH extends TypedEventTarget {
     if (resp.headers.get("accept-post") || resp.headers.get("accept-patch")) {
       switch (this.mode) {
         case Mode.Publisher:
-          this.logMessage(`WHIP version draft-ietf-wish-whip-05`);
+          this.logMessage(
+            `WHIP version draft-ietf-wish-whip-05 (Accept-Post/Accept-Patch)`
+          );
           break;
         case Mode.Player:
-          this.logMessage(`WHEP version draft-murillo-whep-01`);
+          this.logMessage(
+            `WHEP version draft-murillo-whep-01 (Accept-Post/Accept-Patch)`
+          );
           break;
       }
     }

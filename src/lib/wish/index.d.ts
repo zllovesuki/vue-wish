@@ -1,5 +1,6 @@
 import { TypedEventTarget } from "./events";
 export declare const DEFAULT_ICE_SERVERS: string[];
+export declare const TRICKLE_BATCH_INTERVAL: number;
 export declare class WISH extends TypedEventTarget {
   private peerConnection?;
   private iceServers;
@@ -17,6 +18,8 @@ export declare class WISH extends TypedEventTarget {
   private useTrickle;
   private etag?;
   private providedIceServer?;
+  private trickleBatchingJob?;
+  private batchedCandidates;
   constructor(iceServers?: string[]);
   private logMessage;
   private killConnection;
@@ -26,6 +29,9 @@ export declare class WISH extends TypedEventTarget {
   private onGatheringStateChange;
   private onConnectionStateChange;
   private onICECandidate;
+  private startTrickleBatching;
+  private stopTrickleBatching;
+  private trickleBatch;
   private onSignalingStateChange;
   private onICEConnectionStateChange;
   private onTrack;
