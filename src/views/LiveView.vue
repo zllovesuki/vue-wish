@@ -91,6 +91,10 @@ async function toggleCameraSource() {
     VideoPreview.value.srcObject = CurrentVideoSource.value;
   }
 
+  if (!Live.value) {
+    return;
+  }
+
   try {
     await client.ReplaceVideoTrack(CurrentVideoSource.value);
   } catch (e) {
@@ -111,7 +115,7 @@ async function findRearCamera() {
     });
     RearCamera.value = backCamera;
   } catch (e) {
-    if (e instanceof OverconstrainedError) {
+    if ((e as Error).name === "OverconstrainedError") {
       console.log("no rear facing camera");
     } else {
       console.log("has rear facing camera");
