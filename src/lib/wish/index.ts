@@ -1,23 +1,20 @@
 import adapter from "webrtc-adapter";
 import { CandidateInfo, SDPInfo } from "semantic-sdp";
 import { TypedEventTarget, type StatusEvent, type LogEvent } from "./events";
+import { parserLinkHeader } from "./parser";
 
-export const DEFAULT_ICE_SERVERS = ["stun:stun.cloudflare.com:3478"];
+export const DEFAULT_ICE_SERVERS = [
+  "stun:stun.cloudflare.com:3478",
+  "stun:stun.l.google.com:19302",
+  "stun:stun.stunprotocol.org:3478",
+];
 
 enum Mode {
   Player = "player",
   Publisher = "publisher",
 }
 
-export interface Client extends EventTarget {
-  WithEndpoint: (endpoint: string, trickle: boolean) => void;
-  Disconnect: () => Promise<void>;
-  Play: () => Promise<MediaStream>;
-  Publish: (src: MediaStream) => Promise<void>;
-  ReplaceVideoTrack: (src: MediaStream) => Promise<void>;
-}
-
-export class WISH extends TypedEventTarget implements Client {
+export class WISH extends TypedEventTarget {
   private peerConnection?: RTCPeerConnection;
   private iceServers: string[] = DEFAULT_ICE_SERVERS;
 
@@ -36,6 +33,8 @@ export class WISH extends TypedEventTarget implements Client {
   private mode: Mode = Mode.Player;
   private parsedOffer?: SDPInfo;
   private useTrickle: boolean = false;
+  private etag?: string;
+  private providedIceServer?: string;
 
   constructor(iceServers?: string[]) {
     super();
@@ -73,17 +72,16 @@ export class WISH extends TypedEventTarget implements Client {
   }
 
   private createConnection() {
+    const iceServers: string[] = this.providedIceServer
+      ? [this.providedIceServer]
+      : this.iceServers;
     this.logMessage(
-      `Creating a new RTCPeerConnection with iceServers: ${this.iceServers.join(
+      `Creating a new RTCPeerConnection with iceServers: ${iceServers.join(
         ", "
       )}`
     );
     this.peerConnection = new RTCPeerConnection({
-      iceServers: [
-        {
-          urls: this.iceServers,
-        },
-      ],
+      iceServers: [{ urls: iceServers }],
     });
     if (!this.peerConnection) {
       throw new Error("Failed to create a new RTCPeerConnection");
@@ -248,7 +246,7 @@ export class WISH extends TypedEventTarget implements Client {
       fragSDP.addCandidate(candidateObject);
       const frag = fragSDP.toIceFragmentString();
       try {
-        await this.doSignalingPATCH(frag);
+        await this.doSignalingPATCH(frag, false);
       } catch (e) {
         this.logMessage(`Failed to trickle: ${(e as Error).message}`);
       }
@@ -367,6 +365,20 @@ export class WISH extends TypedEventTarget implements Client {
     await this.doSignaling();
   }
 
+  private updateETag(resp: Response) {
+    const etag = resp.headers.get("etag");
+    if (etag) {
+      try {
+        this.etag = JSON.parse(etag);
+      } catch (e) {
+        this.logMessage("Failed to parse ETag header for PATCH");
+      }
+    }
+    if (this.etag) {
+      this.logMessage(`Got ${this.etag} as ETag`);
+    }
+  }
+
   private async doSignalingPOST(sdp: string): Promise<string> {
     if (!this.endpoint) {
       throw new Error("No WHIP/WHEP endpoint has been set");
@@ -395,33 +407,89 @@ export class WISH extends TypedEventTarget implements Client {
         parsed.pathname = resource;
         this.resourceURL = parsed.toString();
       }
-      this.logMessage(`Using ${this.resourceURL} for WHIP/WHEP Resource URL`);
+      this.logMessage(`Using ${this.resourceURL} as WHIP/WHEP Resource URL`);
     } else {
       this.logMessage("No Location header in response");
+    }
+
+    this.updateETag(resp);
+
+    if (resp.headers.get("accept-post") || resp.headers.get("accept-patch")) {
+      switch (this.mode) {
+        case Mode.Publisher:
+          this.logMessage(`WHIP version draft-ietf-wish-whip-05`);
+          break;
+        case Mode.Player:
+          this.logMessage(`WHEP version draft-murillo-whep-01`);
+          break;
+      }
     }
 
     return body;
   }
 
-  private async doSignalingPATCH(frag: string) {
+  private async doSignalingPATCH(frag: string, iceRestart: boolean) {
     if (!this.resourceURL) {
       throw new Error("No resource URL");
+    }
+    const headers: HeadersInit = {
+      "content-type": "application/trickle-ice-sdpfrag",
+    };
+    if (this.etag) {
+      headers["if-match"] = this.etag;
     }
     const resp = await fetch(this.resourceURL, {
       method: "PATCH",
       mode: "cors",
       body: frag,
-      headers: {
-        "content-type": "application/trickle-ice-sdpfrag",
-      },
+      headers,
     });
-    if (resp.status != 204) {
-      const body = await resp.text();
-      throw new Error(`Unexpected status code ${resp.status}: ${body}`);
+    switch (resp.status) {
+      case 200:
+        if (iceRestart) {
+          this.updateETag(resp);
+          return;
+        }
+        // if we are doing an ice restart, we expect 200 OK
+        break;
+      case 204:
+        if (!iceRestart) {
+          return;
+        }
+        // if we are doing trickle ice, we expect 204 No Content
+        break;
+      case 405:
+      case 501:
+        this.logMessage("Trickle ICE not supported, disabling");
+        this.useTrickle = false;
+        break;
+      case 412:
+        this.logMessage("Resource returns 412, session is outdated");
+        this.useTrickle = false;
+        break;
+    }
+    const body = await resp.text();
+    throw new Error(`Unexpected status code ${resp.status}: ${body}`);
+  }
+
+  private async checkEndpoint(endpoint: string) {
+    const resp = await fetch(endpoint, {
+      method: "OPTIONS",
+      mode: "cors",
+    });
+    const link = resp.headers.get("link");
+    if (!link) {
+      return;
+    }
+    const links = parserLinkHeader(link);
+    if (links["ice-server"]) {
+      const url = links["ice-server"].url;
+      this.logMessage(`Endpoint provided ice-server ${url}`);
+      this.providedIceServer = url;
     }
   }
 
-  WithEndpoint(endpoint: string, trickle: boolean) {
+  async WithEndpoint(endpoint: string, trickle: boolean) {
     if (endpoint === "") {
       throw new Error("Endpoint cannot be empty");
     }
@@ -433,6 +501,7 @@ export class WISH extends TypedEventTarget implements Client {
     } catch (e) {
       throw new Error("Invalid Endpoint URL");
     }
+    await this.checkEndpoint(endpoint);
     this.endpoint = endpoint;
     this.resourceURL = "";
   }

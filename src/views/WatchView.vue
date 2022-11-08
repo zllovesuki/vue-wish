@@ -62,7 +62,7 @@ async function play() {
         );
       }
     }
-    client.WithEndpoint(Endpoint.value, setting.trickle);
+    await client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const dst = await client.Play();
     MediaStreams.value.push(dst);

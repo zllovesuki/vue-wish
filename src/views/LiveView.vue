@@ -124,7 +124,7 @@ async function getVideo() {
   const constraints: MediaStreamConstraints = {
     audio: false,
     video: {
-      facingMode: 'user'
+      facingMode: "user",
     },
   };
 
@@ -184,7 +184,7 @@ async function publish() {
     Disabled.value = true;
 
     const client = Client.value;
-    client.WithEndpoint(Endpoint.value, setting.trickle);
+    await client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const src = new MediaStream();
     const videoTrack = CurrentVideoSource.value.getTracks()[0];
