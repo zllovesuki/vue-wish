@@ -11,7 +11,7 @@ export const useSettingStore = defineStore(
     ) {
       dark = true;
     }
-    const trickle = ref(false);
+    const trickle = ref(true);
     const darkMode = ref(dark);
 
     return {

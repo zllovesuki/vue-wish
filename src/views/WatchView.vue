@@ -94,6 +94,7 @@ onMounted(() => {
     switch (ev.detail.status) {
       case "disconnected":
         setAlert("info", "Disconnected from stream");
+        Playing.value = false
         break;
     }
   });
