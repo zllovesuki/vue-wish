@@ -7,8 +7,10 @@ export declare class WISH extends TypedEventTarget {
   private videoSender?;
   private remoteTracks;
   private playerMedia?;
+  private connecting;
   private connectedPromise;
   private connectedResolver;
+  private connectedRejector;
   private gatherPromise;
   private gatherResolver;
   private endpoint?;

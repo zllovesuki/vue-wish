@@ -25,8 +25,10 @@ export class WISH extends TypedEventTarget {
   private remoteTracks: MediaStreamTrack[] = [];
   private playerMedia?: MediaStream;
 
+  private connecting: boolean = false;
   private connectedPromise!: Promise<void>;
   private connectedResolver!: (any: void) => void;
+  private connectedRejector!: (reason?: any) => void;
   private gatherPromise!: Promise<void>;
   private gatherResolver!: (any: void) => void;
 
@@ -72,6 +74,7 @@ export class WISH extends TypedEventTarget {
       this.parsedOffer = undefined;
       this.playerMedia = undefined;
       this.videoSender = undefined;
+      this.connecting = false;
       this.remoteTracks = [];
       this.batchedCandidates = [];
       this.stopTrickleBatching();
@@ -98,8 +101,9 @@ export class WISH extends TypedEventTarget {
   }
 
   private newResolvers() {
-    this.connectedPromise = new Promise((resolve) => {
+    this.connectedPromise = new Promise((resolve, reject) => {
       this.connectedResolver = resolve;
+      this.connectedRejector = reject;
     });
     this.gatherPromise = new Promise((resolve) => {
       this.gatherResolver = resolve;
@@ -330,8 +334,16 @@ export class WISH extends TypedEventTarget {
             },
           })
         );
+        this.connecting = false;
         this.connectedResolver();
         this.stopTrickleBatching();
+        break;
+      case "failed":
+        if (this.connecting) {
+          this.connectedRejector("ICE failed while trying to connect");
+          this.stopTrickleBatching();
+          this.connecting = false;
+        }
         break;
     }
   }
@@ -389,6 +401,7 @@ export class WISH extends TypedEventTarget {
       sdp: remoteOffer,
       type: "answer",
     });
+    this.connecting = true;
   }
 
   private async whipOffer(src: MediaStream) {
