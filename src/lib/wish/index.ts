@@ -292,7 +292,12 @@ export class WISH extends TypedEventTarget {
     }
     fragSDP.setICE(this.parsedOffer.getICE());
 
-    const frag = fragSDP.toIceFragmentString();
+    const generated = fragSDP.toIceFragmentString();
+    // for trickle-ice-sdpfrag, we need a psuedo m= line
+    const lines = generated.split(/\r?\n/);
+    lines.splice(2, 0, "m=audio 9 RTP/AVP 0");
+    lines.splice(3, 0, "a=mid:0");
+    const frag = lines.join("\r\n");
     try {
       await this.doSignalingPATCH(frag, false);
     } catch (e) {
