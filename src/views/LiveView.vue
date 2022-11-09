@@ -2,7 +2,15 @@
 import { useNotificationStore } from "@/store/notification";
 import { useSettingStore } from "@/store/setting";
 
-import { ref, onUnmounted, onMounted, computed, nextTick, type Ref } from "vue";
+import {
+  ref,
+  onUnmounted,
+  onMounted,
+  computed,
+  nextTick,
+  watchEffect,
+  type Ref,
+} from "vue";
 
 import AddressBar from "@/components/AddressBar.vue";
 import StatusBadge from "@/components/StatusBadge.vue";
@@ -24,6 +32,8 @@ import {
 import { WISH } from "@/lib/wish";
 import type { AlertLevel } from "@/types/level";
 
+type Source = "Front" | "Rear" | "Screen" | "None";
+
 const notification = useNotificationStore();
 const setting = useSettingStore();
 
@@ -31,17 +41,21 @@ const Endpoint = ref("");
 const Disabled = ref(false);
 const Logs: Ref<string[]> = ref([]);
 
-const Client = ref(new WISH());
+const Client = new WISH()
 const HideHeader = ref(false);
 
 const Live = ref(false);
 const RearCamera: Ref<MediaStream | undefined> = ref();
 const VideoSource: Ref<MediaStream | undefined> = ref();
 const AudioSource: Ref<MediaStream | undefined> = ref();
-const CurrentVideoSource: Ref<MediaStream | undefined> = ref();
+const ScreenShareSource: Ref<MediaStream | undefined> = ref();
+const SourceBeforeScreenShare: Ref<MediaStream | undefined> = ref();
+const ActiveVideoSource: Ref<MediaStream | undefined> = ref();
 const VideoEnabled = ref(true);
 const AudioEnabled = ref(true);
 const VideoPreview: Ref<HTMLVideoElement | undefined> = ref();
+
+const BounceIcon = ref(false);
 
 const hasVideo = computed(() => {
   return typeof VideoSource.value !== "undefined";
@@ -53,6 +67,27 @@ const readyToGoLive = computed(() => {
   return hasAudio.value && hasVideo.value;
 });
 
+function getTrack(src: MediaStream): MediaStreamTrack {
+  return src.getTracks()[0]
+}
+
+const CurrentSource = computed(():Source=> {
+  if (!ActiveVideoSource.value) {
+    return "None";
+  }
+  const srcId = ActiveVideoSource.value.id;
+  if (VideoSource.value && VideoSource.value.id === srcId) {
+    return "Front";
+  }
+  if (RearCamera.value && RearCamera.value.id === srcId) {
+    return "Rear";
+  }
+  if (ScreenShareSource.value && ScreenShareSource.value.id === srcId) {
+    return "Screen";
+  }
+  return "None";
+})
+
 const AlertMessage = ref("");
 const MessageLevel: Ref<AlertLevel> = ref("info");
 function setAlert(level: AlertLevel, msg: string) {
@@ -63,32 +98,41 @@ function clearAlert() {
   AlertMessage.value = "";
 }
 
-const hasRearCamera = computed(() => {
-  return typeof RearCamera.value !== "undefined";
+const hasScreenShare = computed(() => {
+  return !!navigator.mediaDevices.getDisplayMedia;
 });
-const usingRearCamera = computed(() => {
-  if (!RearCamera.value) {
-    return false;
-  }
-  return RearCamera.value === CurrentVideoSource.value;
-});
-async function toggleCameraSource() {
-  if (!RearCamera.value || !VideoSource.value || !CurrentVideoSource.value) {
+async function toggleScreenShare() {
+  if (!ActiveVideoSource.value) {
     return;
   }
 
-  const client = Client.value;
-  if (usingRearCamera.value) {
-    RearCamera.value.getTracks()[0].enabled = false;
-    VideoSource.value.getTracks()[0].enabled = true;
-    CurrentVideoSource.value = VideoSource.value;
-  } else {
-    VideoSource.value.getTracks()[0].enabled = false;
-    RearCamera.value.getTracks()[0].enabled = true;
-    CurrentVideoSource.value = RearCamera.value;
-  }
-  if (VideoPreview.value) {
-    VideoPreview.value.srcObject = CurrentVideoSource.value;
+  try {
+    if (SourceBeforeScreenShare.value && ScreenShareSource.value) {
+      // turn off screen share
+      const track = getTrack(ScreenShareSource.value)
+      track.removeEventListener("ended", toggleScreenShare);
+      track.enabled = false;
+      track.stop();
+      getTrack(SourceBeforeScreenShare.value).enabled = true;
+      ActiveVideoSource.value = SourceBeforeScreenShare.value;
+      SourceBeforeScreenShare.value = undefined;
+      ScreenShareSource.value = undefined;
+    } else {
+      // turn on screen share
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      });
+      getTrack(ActiveVideoSource.value).enabled = false
+      SourceBeforeScreenShare.value = ActiveVideoSource.value;
+      ActiveVideoSource.value = stream;
+      ScreenShareSource.value = stream;
+      getTrack(stream).addEventListener("ended", toggleScreenShare);
+    }
+  } catch (e) {
+    notification.notify(
+      `Failed to toggle screen share: ${(e as Error).message}`
+    );
+    return;
   }
 
   if (!Live.value) {
@@ -96,7 +140,38 @@ async function toggleCameraSource() {
   }
 
   try {
-    await client.ReplaceVideoTrack(CurrentVideoSource.value);
+    await Client.ReplaceVideoTrack(ActiveVideoSource.value);
+  } catch (e) {
+    notification.notify(
+      `Failed to change stream source: ${(e as Error).message}`
+    );
+  }
+}
+
+const hasRearCamera = computed(() => {
+  return typeof RearCamera.value !== "undefined";
+});
+async function toggleCameraSource() {
+  if (!RearCamera.value || !VideoSource.value) {
+    return;
+  }
+
+  if (CurrentSource.value === "Rear") {
+    getTrack(RearCamera.value).enabled = false
+    getTrack(VideoSource.value).enabled = true
+    ActiveVideoSource.value = VideoSource.value;
+  } else {
+    getTrack(VideoSource.value).enabled = false
+    getTrack(RearCamera.value).enabled = true
+    ActiveVideoSource.value = RearCamera.value;
+  }
+
+  if (!Live.value) {
+    return;
+  }
+
+  try {
+    await Client.ReplaceVideoTrack(ActiveVideoSource.value);
   } catch (e) {
     notification.notify(
       `Failed to change stream source: ${(e as Error).message}`
@@ -113,6 +188,7 @@ async function findRearCamera() {
         },
       },
     });
+    getTrack(backCamera).enabled = false
     RearCamera.value = backCamera;
   } catch (e) {
     if ((e as Error).name === "OverconstrainedError") {
@@ -136,21 +212,19 @@ async function getVideo() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     VideoSource.value = stream;
-    if (VideoPreview.value) {
-      VideoPreview.value.srcObject = stream;
-    }
-    CurrentVideoSource.value = stream;
+    ActiveVideoSource.value = stream;
     await findRearCamera();
   } catch (e) {
     setAlert("fail", `Permission error: ${(e as Error).message}`);
   }
 }
 
-async function toggleVideo() {
-  if (CurrentVideoSource.value) {
-    const track = CurrentVideoSource.value.getTracks()[0];
-    VideoEnabled.value = track.enabled = !track.enabled;
+function toggleVideoEnabled() {
+  if (!ActiveVideoSource.value) {
+    return;
   }
+  const track = getTrack(ActiveVideoSource.value)
+  VideoEnabled.value = track.enabled = !track.enabled;
 }
 
 async function getAudio() {
@@ -171,7 +245,7 @@ async function getAudio() {
 
 async function toggleAudio() {
   if (AudioSource.value) {
-    const track = AudioSource.value.getTracks()[0];
+    const track = getTrack(AudioSource.value)
     AudioEnabled.value = track.enabled = !track.enabled;
   }
 }
@@ -180,26 +254,26 @@ async function publish() {
   if (Disabled.value) {
     return;
   }
-  if (!CurrentVideoSource.value || !AudioSource.value) {
+  if (!ActiveVideoSource.value || !AudioSource.value) {
     return;
   }
   clearAlert();
   try {
     Disabled.value = true;
 
-    const client = Client.value;
-    await client.WithEndpoint(Endpoint.value, setting.trickle);
+    await Client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const src = new MediaStream();
-    const videoTrack = CurrentVideoSource.value.getTracks()[0];
+    const videoTrack = getTrack(ActiveVideoSource.value)
     console.log(videoTrack.getSettings());
-    const audioTrack = AudioSource.value.getTracks()[0];
+    const audioTrack = getTrack(AudioSource.value)
     console.log(audioTrack.getSettings());
     src.addTrack(videoTrack);
     src.addTrack(audioTrack);
-    await client.Publish(src);
+    await Client.Publish(src);
 
     await nextTick();
+    setting.lastLive = Endpoint.value;
     HideHeader.value = true;
     Live.value = true;
   } catch (e) {
@@ -208,13 +282,29 @@ async function publish() {
   }
 }
 
+function stopAllSources() {
+  const sources = [
+    RearCamera.value,
+    VideoSource.value,
+    AudioSource.value,
+    ScreenShareSource.value,
+  ];
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    const track = getTrack(source)
+    track.enabled = false;
+    track.stop();
+  }
+}
+
 async function end() {
   if (!Live.value) {
     return;
   }
   try {
-    const client = Client.value;
-    await client.Disconnect();
+    await Client.Disconnect();
     notification.notify("Livestream ended");
 
     await nextTick();
@@ -226,12 +316,11 @@ async function end() {
 }
 
 onMounted(async () => {
-  const client = Client.value;
-  client.addEventListener("log", (ev) => {
+  Client.addEventListener("log", (ev) => {
     const now = new Date().toLocaleString();
     Logs.value.push(`${now}: ${ev.detail.message}`);
   });
-  client.addEventListener("status", (ev) => {
+  Client.addEventListener("status", (ev) => {
     switch (ev.detail.status) {
       case "disconnected":
         Live.value = false;
@@ -239,49 +328,66 @@ onMounted(async () => {
         break;
     }
   });
+  Endpoint.value = setting.lastLive;
+
+  watchEffect(() => {
+    if (!VideoPreview.value) {
+      return;
+    }
+    // eslint-disable-next-line no-undef
+    VideoPreview.value.srcObject = ActiveVideoSource.value as MediaProvider;
+  });
+
+  watchEffect(() => {
+    if (readyToGoLive.value) {
+      BounceIcon.value = true;
+      setTimeout(() => {
+        BounceIcon.value = false;
+      }, 2000);
+    } else {
+      BounceIcon.value = false;
+    }
+  });
 });
 
 onUnmounted(async () => {
-  if (RearCamera.value) {
-    RearCamera.value.getTracks().forEach((track) => {
-      track.stop();
-    });
-  }
-  if (VideoSource.value) {
-    VideoSource.value.getTracks().forEach((track) => {
-      track.stop();
-    });
-  }
-  if (AudioSource.value) {
-    AudioSource.value.getTracks().forEach((track) => {
-      track.stop();
-    });
-  }
+  stopAllSources();
   await end();
 });
 </script>
 
 <template>
   <main>
-    <div
-      class="hero-headline flex flex-col items-center justify-center text-center"
-      v-show="!HideHeader"
+    <transition
+      enter-active-class="transform ease-out duration-500 transition"
+      enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+      enter-to-class="translate-y-0 opacity-100 sm:translate-x-0"
+      leave-active-class="transition ease-in duration-300"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
     >
-      <h1 class="font-bold text-3xl text-gray-900 dark:text-gray-300">
-        Go Live via
-        <a href="https://datatracker.ietf.org/doc/draft-ietf-wish-whip/"
-          >WHIP</a
-        >
-      </h1>
-      <p class="font-base text-base text-gray-600 dark:text-gray-500">
-        Publish an WebRTC stream with sub-second latency to viewers
-      </p>
-    </div>
+      <div
+        class="hero-headline flex flex-col items-center justify-center text-center"
+        v-show="!HideHeader"
+      >
+        <h1 class="font-bold text-3xl text-gray-900 dark:text-gray-300">
+          Go Live via
+          <a href="https://datatracker.ietf.org/doc/draft-ietf-wish-whip/"
+            >WHIP</a
+          >
+        </h1>
+        <p class="font-base text-base text-gray-600 dark:text-gray-500">
+          Publish an WebRTC stream with sub-second latency to viewers
+        </p>
+      </div>
+    </transition>
+
     <div class="box pt-6">
       <div class="box-wrapper">
         <AddressBar
-          :action="publish"
           placeholder="WHIP Endpoint"
+          :action="publish"
+          :blur="Live && CurrentSource === 'Screen'"
           :disabled="Disabled || !readyToGoLive"
           :value="Endpoint"
           @update:value="Endpoint = $event"
@@ -291,6 +397,7 @@ onUnmounted(async () => {
               Disabled || !readyToGoLive
                 ? 'cursor-not-allowed'
                 : 'cursor-pointer',
+              BounceIcon ? 'animate-ping' : '',
               'w-8 h-8 text-gray-600 dark:text-gray-400',
             ]"
           />
@@ -314,7 +421,7 @@ onUnmounted(async () => {
               <h3
                 class="text-lg font-medium leading-6 text-gray-900 dark:text-gray-300"
               >
-                Then, you are ready to go live!
+                You are ready to go live!
               </h3>
               <p class="mt-2 text-sm text-gray-600">
                 <StatusBadge text="Live" :enabled="Live">
@@ -375,10 +482,13 @@ onUnmounted(async () => {
               <h3
                 class="text-lg font-medium leading-6 text-gray-900 dark:text-gray-300"
               >
-                First, choose stream sources
+                First, choose sources
               </h3>
               <p class="mt-2 text-sm text-gray-600">
-                <StatusBadge text="Video" :enabled="hasVideo && VideoEnabled">
+                <StatusBadge
+                  :text="CurrentSource"
+                  :enabled="hasVideo && VideoEnabled"
+                >
                   <template #enabled>
                     <VideoCameraIcon class="ml-1 w-5 h-5" />
                   </template>
@@ -394,8 +504,10 @@ onUnmounted(async () => {
                     <SpeakerXMarkIcon class="ml-1 w-5 h-5" />
                   </template>
                 </StatusBadge>
+              </p>
+              <p class="mt-2 text-sm text-gray-600">
                 <StatusBadge
-                  text="Rear Camera"
+                  :text="(hasRearCamera ? 'Has' : 'No') + ' Rear Camera'"
                   :enabled="hasVideo && hasRearCamera"
                 >
                   <template #enabled>
@@ -413,7 +525,7 @@ onUnmounted(async () => {
             <form @submit.prevent>
               <div class="shadow sm:overflow-hidden sm:rounded-md">
                 <div
-                  class="space-y-6 bg-white dark:bg-slate-800 px-4 py-5 sm:p-6"
+                  class="space-y-6 bg-white dark:bg-slate-800 px-4 py-5 sm:p-6 text-center xl:text-justify"
                 >
                   <div>
                     <span
@@ -423,14 +535,14 @@ onUnmounted(async () => {
                       <button
                         type="button"
                         @click="getVideo"
-                        class="relative inline-flex items-center rounded-l-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        class="relative inline-flex items-center rounded-l-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-100 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         Get Camera Permission
                       </button>
                       <button
                         type="button"
                         @click="getAudio"
-                        class="relative -ml-px inline-flex items-center rounded-r-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        class="relative -ml-px inline-flex items-center rounded-r-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-100 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         Get Microphone Permission
                       </button>
@@ -441,29 +553,51 @@ onUnmounted(async () => {
                     >
                       <button
                         type="button"
-                        @click="toggleVideo"
-                        class="relative inline-flex items-center rounded-l-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        @click="toggleVideoEnabled"
+                        class="relative inline-flex items-center rounded-l-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-100 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       >
-                        Turn {{ VideoEnabled ? "off" : "on " }} Camera
+                        Turn {{ VideoEnabled ? "off" : "on " }} Video
                       </button>
                       <button
                         type="button"
                         @click="toggleCameraSource"
-                        v-show="hasRearCamera"
+                        v-show="
+                          hasRearCamera && CurrentSource !== 'Screen'
+                        "
                         :disabled="!VideoEnabled"
                         :class="[
                           VideoEnabled
                             ? 'cursor-pointer'
                             : 'cursor-not-allowed',
-                          'relative -ml-px inline-flex items-center border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
+                          'relative -ml-px inline-flex items-center border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-100 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
                         ]"
                       >
-                        Use {{ usingRearCamera ? "front" : "rear " }} Camera
+                        Use
+                        {{ CurrentSource === "Rear" ? "front" : "rear " }}
+                        Camera
+                      </button>
+                      <button
+                        type="button"
+                        @click="toggleScreenShare"
+                        v-show="hasScreenShare"
+                        :disabled="!VideoEnabled"
+                        :class="[
+                          VideoEnabled
+                            ? 'cursor-pointer'
+                            : 'cursor-not-allowed',
+                          'relative -ml-px inline-flex items-center border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-100 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
+                        ]"
+                      >
+                        {{
+                          CurrentSource === "Screen"
+                            ? "Stop Screen Share"
+                            : "Screen Share"
+                        }}
                       </button>
                       <button
                         type="button"
                         @click="toggleAudio"
-                        class="relative -ml-px inline-flex items-center rounded-r-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-50 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        class="relative -ml-px inline-flex items-center rounded-r-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-4 py-2 text-sm font-medium dark:text-gray-200 dark:hover:bg-gray-600 hover:bg-gray-100 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         Turn {{ AudioEnabled ? "off" : "on " }} Microphone
                       </button>

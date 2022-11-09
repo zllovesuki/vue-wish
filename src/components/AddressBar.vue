@@ -8,6 +8,7 @@ const setting = useSettingStore();
 const props = defineProps<{
   action: () => void;
   value: string;
+  blur?: boolean;
   disabled: boolean;
   placeholder: string;
 }>();
@@ -43,6 +44,7 @@ const value = computed({
       :disabled="disabled"
       :class="[
         disabled ? 'cursor-not-allowed' : '',
+        blur ? 'blur-sm' : '',
         'w-full pl-4 text-sm outline-none focus:outline-none bg-transparent border-none focus:ring-0 focus:ring-offset-0 dark:text-white text-black disabled:text-gray-400 dark:disabled:text-gray-400 placeholder-gray-600 dark:placeholder-gray-400',
       ]"
     />
