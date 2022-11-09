@@ -234,6 +234,7 @@ onMounted(async () => {
   client.addEventListener("status", (ev) => {
     switch (ev.detail.status) {
       case "disconnected":
+        Live.value = false;
         setAlert("info", "Disconnected from stream");
         break;
     }
