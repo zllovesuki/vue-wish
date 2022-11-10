@@ -38,15 +38,16 @@ export class WISH extends TypedEventTarget {
   private parsedOffer?: SDPInfo;
   private useTrickle: boolean = false;
   private etag?: string;
-  private providedIceServer?: string;
 
   private trickleBatchingJob?: number;
   private batchedCandidates: RTCIceCandidate[] = [];
 
+  private connectStartTime?: number;
+
   constructor(iceServers?: string[]) {
     super();
     if (iceServers) {
-      this.iceServers = iceServers;
+      this.iceServers = iceServers ? iceServers : DEFAULT_ICE_SERVERS;
     }
     this.logMessage(
       `Enabling webrtc-adapter for ${adapter.browserDetails.browser}@${adapter.browserDetails.version}`
@@ -82,16 +83,9 @@ export class WISH extends TypedEventTarget {
   }
 
   private createConnection() {
-    const iceServers: string[] = this.providedIceServer
-      ? [this.providedIceServer]
-      : this.iceServers;
-    this.logMessage(
-      `Creating a new RTCPeerConnection with iceServers: ${iceServers.join(
-        ", "
-      )}`
-    );
+    this.logMessage("Creating a new RTCPeerConnection");
     this.peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: iceServers }],
+      iceServers: [{ urls: this.iceServers }],
     });
     if (!this.peerConnection) {
       throw new Error("Failed to create a new RTCPeerConnection");
@@ -327,6 +321,14 @@ export class WISH extends TypedEventTarget {
     );
     switch (this.peerConnection.iceConnectionState) {
       case "connected":
+        if (this.connectStartTime) {
+          const connected = performance.now();
+          this.logMessage(
+            `Took ${((connected - this.connectStartTime) / 1000).toFixed(
+              2
+            )} seconds to establish PeerConnection`
+          );
+        }
         this.dispatchEvent(
           new CustomEvent<StatusEvent>("status", {
             detail: {
@@ -375,6 +377,7 @@ export class WISH extends TypedEventTarget {
     if (!this.peerConnection) {
       return;
     }
+    this.connectStartTime = performance.now();
     const localOffer = await this.peerConnection.createOffer();
     if (!localOffer.sdp) {
       throw new Error("Fail to create offer");
@@ -393,7 +396,7 @@ export class WISH extends TypedEventTarget {
       remoteOffer = await this.doSignalingPOST(offer.sdp);
     } else {
       // ensure that resourceURL is set before trickle happens
-      remoteOffer = await this.doSignalingPOST(localOffer.sdp);
+      remoteOffer = await this.doSignalingPOST(localOffer.sdp, true);
       this.startTrickleBatching();
       await this.peerConnection.setLocalDescription(localOffer);
     }
@@ -444,10 +447,14 @@ export class WISH extends TypedEventTarget {
     }
   }
 
-  private async doSignalingPOST(sdp: string): Promise<string> {
+  private async doSignalingPOST(
+    sdp: string,
+    useLink?: boolean
+  ): Promise<string> {
     if (!this.endpoint) {
       throw new Error("No WHIP/WHEP endpoint has been set");
     }
+    const signalStartTime = performance.now();
     const resp = await fetch(this.endpoint, {
       method: "POST",
       mode: "cors",
@@ -493,6 +500,31 @@ export class WISH extends TypedEventTarget {
           break;
       }
     }
+
+    if (this.peerConnection && useLink) {
+      const link = resp.headers.get("link");
+      if (link) {
+        const links = parserLinkHeader(link);
+        if (links["ice-server"]) {
+          const url = links["ice-server"].url;
+          this.logMessage(`Endpoint provided ice-server ${url}`);
+          this.peerConnection.setConfiguration({
+            iceServers: [
+              {
+                urls: [url],
+              },
+            ],
+          });
+        }
+      }
+    }
+
+    const signaled = performance.now();
+    this.logMessage(
+      `Took ${((signaled - signalStartTime) / 1000).toFixed(
+        2
+      )} seconds to exchange SDP`
+    );
 
     return body;
   }
@@ -541,23 +573,6 @@ export class WISH extends TypedEventTarget {
     throw new Error(`Unexpected status code ${resp.status}: ${body}`);
   }
 
-  private async checkEndpoint(endpoint: string) {
-    const resp = await fetch(endpoint, {
-      method: "OPTIONS",
-      mode: "cors",
-    });
-    const link = resp.headers.get("link");
-    if (!link) {
-      return;
-    }
-    const links = parserLinkHeader(link);
-    if (links["ice-server"]) {
-      const url = links["ice-server"].url;
-      this.logMessage(`Endpoint provided ice-server ${url}`);
-      this.providedIceServer = url;
-    }
-  }
-
   async WithEndpoint(endpoint: string, trickle: boolean) {
     if (endpoint === "") {
       throw new Error("Endpoint cannot be empty");
@@ -570,7 +585,6 @@ export class WISH extends TypedEventTarget {
     } catch (e) {
       throw new Error("Invalid Endpoint URL");
     }
-    await this.checkEndpoint(endpoint);
     this.endpoint = endpoint;
     this.resourceURL = "";
   }
@@ -589,6 +603,7 @@ export class WISH extends TypedEventTarget {
       const body = await resp.text();
       throw new Error(`Unexpected status code ${resp.status}: ${body}`);
     }
+    this.logMessage(`----- Disconnected via DELETE -----`);
     this.resourceURL = "";
   }
 
