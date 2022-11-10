@@ -23,8 +23,8 @@ const Disabled = ref(false);
 const Logs: Ref<string[]> = ref([]);
 
 const Client = new WISH();
-const MediaStreams: Ref<MediaStream[]> = ref([]);
-const EnableControl = ref(false);
+const Media: Ref<MediaStream | undefined> = ref();
+const ShowControl = ref(false);
 const HideHeader = ref(false);
 const Playing = ref(false);
 
@@ -45,12 +45,12 @@ async function play() {
   if (Disabled.value) {
     return;
   }
-  MediaStreams.value.pop();
+  Media.value = undefined
   clearAlert();
 
   Disabled.value = true;
   try {
-    EnableControl.value = false;
+    ShowControl.value = false;
 
     if (Playing.value) {
       try {
@@ -64,10 +64,10 @@ async function play() {
     await Client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const dst = await Client.Play();
-    MediaStreams.value.push(dst);
+    Media.value = dst
 
     await nextTick();
-    EnableControl.value = true;
+    ShowControl.value = true;
     HideHeader.value = true;
     Playing.value = true;
     router.push({
@@ -174,10 +174,9 @@ onUnmounted(async () => {
 
       <section id="player-container" class="justify-center items-center flex">
         <video
-          v-for="src in MediaStreams"
-          :key="src.id"
-          :srcObject="src"
-          :controls="EnableControl"
+          v-show="Media"
+          :srcObject="Media"
+          :controls="ShowControl"
           class="w-full h-auto"
           autoplay="true"
         />
