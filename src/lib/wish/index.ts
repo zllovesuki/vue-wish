@@ -6,7 +6,6 @@ import { parserLinkHeader } from "./parser";
 export const DEFAULT_ICE_SERVERS = [
   "stun:stun.cloudflare.com:3478",
   "stun:stun.l.google.com:19302",
-  "stun:stun.stunprotocol.org:3478",
 ];
 
 export const TRICKLE_BATCH_INTERVAL = 50;
@@ -43,6 +42,7 @@ export class WISH extends TypedEventTarget {
   private batchedCandidates: RTCIceCandidate[] = [];
 
   private connectStartTime?: number;
+  private iceStartTime?: number;
 
   constructor(iceServers?: string[]) {
     super();
@@ -320,13 +320,25 @@ export class WISH extends TypedEventTarget {
       `ICE Connection State changed: ${this.peerConnection.iceConnectionState}`
     );
     switch (this.peerConnection.iceConnectionState) {
+      case "checking":
+        this.iceStartTime = performance.now();
+        break;
       case "connected":
+        const connected = performance.now();
         if (this.connectStartTime) {
-          const connected = performance.now();
+          const delta = connected - this.connectStartTime;
           this.logMessage(
-            `Took ${((connected - this.connectStartTime) / 1000).toFixed(
+            `Took ${(delta / 1000).toFixed(
               2
-            )} seconds to establish PeerConnection`
+            )} seconds to establish PeerConnection (end-to-end)`
+          );
+        }
+        if (this.iceStartTime) {
+          const delta = connected - this.iceStartTime;
+          this.logMessage(
+            `Took ${(delta / 1000).toFixed(
+              2
+            )} seconds to establish PeerConnection (ICE)`
           );
         }
         this.dispatchEvent(
@@ -520,10 +532,9 @@ export class WISH extends TypedEventTarget {
     }
 
     const signaled = performance.now();
+    const delta = signaled - signalStartTime;
     this.logMessage(
-      `Took ${((signaled - signalStartTime) / 1000).toFixed(
-        2
-      )} seconds to exchange SDP`
+      `Took ${(delta / 1000).toFixed(2)} seconds to exchange SDP`
     );
 
     return body;
