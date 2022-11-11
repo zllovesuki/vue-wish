@@ -10,6 +10,7 @@ import AddressBar from "@/components/AddressBar.vue";
 import AccordionSection from "@/components/AccordionSection.vue";
 import AlertSection from "@/components/AlertSection.vue";
 import HorizontalDivider from "@/components/HorizontalDivider.vue";
+import SpinnerIcon from "@/components/SpinnerIcon.vue";
 import { PlayIcon } from "@heroicons/vue/24/outline";
 
 import { WISH } from "@/lib/wish";
@@ -45,7 +46,7 @@ async function play() {
   if (Disabled.value) {
     return;
   }
-  Media.value = undefined
+  Media.value = undefined;
   clearAlert();
 
   Disabled.value = true;
@@ -64,7 +65,7 @@ async function play() {
     await Client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const dst = await Client.Play();
-    Media.value = dst
+    Media.value = dst;
 
     await nextTick();
     ShowControl.value = true;
@@ -153,11 +154,10 @@ onUnmounted(async () => {
           :value="Endpoint"
           @update:value="Endpoint = $event"
         >
+          <SpinnerIcon v-show="Disabled" class="w-8 h-8 cursor-not-allowed" />
           <PlayIcon
-            :class="[
-              Disabled ? 'cursor-not-allowed' : 'cursor-pointer',
-              'w-8 h-8 text-gray-600 dark:text-gray-400',
-            ]"
+            v-show="!Disabled"
+            class="w-8 h-8 text-gray-600 dark:text-gray-400 cursor-pointer"
           />
         </AddressBar>
       </div>

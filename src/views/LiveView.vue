@@ -17,6 +17,7 @@ import StatusBadge from "@/components/StatusBadge.vue";
 import AccordionSection from "@/components/AccordionSection.vue";
 import AlertSection from "@/components/AlertSection.vue";
 import HorizontalDivider from "@/components/HorizontalDivider.vue";
+import SpinnerIcon from "@/components/SpinnerIcon.vue";
 import {
   VideoCameraIcon,
   VideoCameraSlashIcon,
@@ -41,7 +42,7 @@ const Endpoint = ref("");
 const Disabled = ref(false);
 const Logs: Ref<string[]> = ref([]);
 
-const Client = new WISH()
+const Client = new WISH();
 const HideHeader = ref(false);
 
 const Live = ref(false);
@@ -68,10 +69,10 @@ const readyToGoLive = computed(() => {
 });
 
 function getTrack(src: MediaStream): MediaStreamTrack {
-  return src.getTracks()[0]
+  return src.getTracks()[0];
 }
 
-const CurrentSource = computed(():Source=> {
+const CurrentSource = computed((): Source => {
   if (!ActiveVideoSource.value) {
     return "None";
   }
@@ -86,7 +87,7 @@ const CurrentSource = computed(():Source=> {
     return "Screen";
   }
   return "None";
-})
+});
 
 const AlertMessage = ref("");
 const MessageLevel: Ref<AlertLevel> = ref("info");
@@ -109,7 +110,7 @@ async function toggleScreenShare() {
   try {
     if (SourceBeforeScreenShare.value && ScreenShareSource.value) {
       // turn off screen share
-      const track = getTrack(ScreenShareSource.value)
+      const track = getTrack(ScreenShareSource.value);
       track.removeEventListener("ended", toggleScreenShare);
       track.enabled = false;
       track.stop();
@@ -122,7 +123,7 @@ async function toggleScreenShare() {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
       });
-      getTrack(ActiveVideoSource.value).enabled = false
+      getTrack(ActiveVideoSource.value).enabled = false;
       SourceBeforeScreenShare.value = ActiveVideoSource.value;
       ActiveVideoSource.value = stream;
       ScreenShareSource.value = stream;
@@ -157,12 +158,12 @@ async function toggleCameraSource() {
   }
 
   if (CurrentSource.value === "Rear") {
-    getTrack(RearCamera.value).enabled = false
-    getTrack(VideoSource.value).enabled = true
+    getTrack(RearCamera.value).enabled = false;
+    getTrack(VideoSource.value).enabled = true;
     ActiveVideoSource.value = VideoSource.value;
   } else {
-    getTrack(VideoSource.value).enabled = false
-    getTrack(RearCamera.value).enabled = true
+    getTrack(VideoSource.value).enabled = false;
+    getTrack(RearCamera.value).enabled = true;
     ActiveVideoSource.value = RearCamera.value;
   }
 
@@ -188,7 +189,7 @@ async function findRearCamera() {
         },
       },
     });
-    getTrack(backCamera).enabled = false
+    getTrack(backCamera).enabled = false;
     RearCamera.value = backCamera;
   } catch (e) {
     if ((e as Error).name === "OverconstrainedError") {
@@ -223,7 +224,7 @@ function toggleVideoEnabled() {
   if (!ActiveVideoSource.value) {
     return;
   }
-  const track = getTrack(ActiveVideoSource.value)
+  const track = getTrack(ActiveVideoSource.value);
   VideoEnabled.value = track.enabled = !track.enabled;
 }
 
@@ -245,7 +246,7 @@ async function getAudio() {
 
 async function toggleAudio() {
   if (AudioSource.value) {
-    const track = getTrack(AudioSource.value)
+    const track = getTrack(AudioSource.value);
     AudioEnabled.value = track.enabled = !track.enabled;
   }
 }
@@ -264,9 +265,9 @@ async function publish() {
     await Client.WithEndpoint(Endpoint.value, setting.trickle);
 
     const src = new MediaStream();
-    const videoTrack = getTrack(ActiveVideoSource.value)
+    const videoTrack = getTrack(ActiveVideoSource.value);
     console.log(videoTrack.getSettings());
-    const audioTrack = getTrack(AudioSource.value)
+    const audioTrack = getTrack(AudioSource.value);
     console.log(audioTrack.getSettings());
     src.addTrack(videoTrack);
     src.addTrack(audioTrack);
@@ -293,7 +294,7 @@ function stopAllSources() {
     if (!source) {
       continue;
     }
-    const track = getTrack(source)
+    const track = getTrack(source);
     track.enabled = false;
     track.stop();
   }
@@ -394,6 +395,7 @@ onUnmounted(async () => {
           @update:value="Endpoint = $event"
         >
           <SignalIcon
+            v-show="!Disabled || Live"
             :class="[
               Disabled || !readyToGoLive
                 ? 'cursor-not-allowed'
@@ -401,6 +403,10 @@ onUnmounted(async () => {
               BounceIcon ? 'animate-ping' : '',
               'w-8 h-8 text-gray-600 dark:text-gray-400',
             ]"
+          />
+          <SpinnerIcon
+            v-show="Disabled && !Live"
+            class="w-8 h-8 cursor-not-allowed"
           />
         </AddressBar>
       </div>
@@ -562,9 +568,7 @@ onUnmounted(async () => {
                       <button
                         type="button"
                         @click="toggleCameraSource"
-                        v-show="
-                          hasRearCamera && CurrentSource !== 'Screen'
-                        "
+                        v-show="hasRearCamera && CurrentSource !== 'Screen'"
                         :disabled="!VideoEnabled"
                         :class="[
                           VideoEnabled
