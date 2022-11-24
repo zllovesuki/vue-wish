@@ -419,15 +419,41 @@ export class WISH extends TypedEventTarget {
     this.connecting = true;
   }
 
+  private setVideoCodecPreference(transceiver: RTCRtpTransceiver) {
+    if (
+      typeof RTCRtpSender.getCapabilities === "undefined" ||
+      typeof transceiver.setCodecPreferences === "undefined"
+    ) {
+      return;
+    }
+    const capability = RTCRtpSender.getCapabilities("video");
+    const codecs = capability ? capability.codecs : [];
+    this.logMessage(
+      `Available codecs for outbound video: ${codecs
+        .map((c) => c.mimeType)
+        .join(", ")}`
+    );
+    for (let i = 0; i < codecs.length; i++) {
+      const codec = codecs[i];
+      if (codec.mimeType === "video/VP9") {
+        codecs.unshift(codecs.splice(i, 1)[0]);
+      }
+    }
+    transceiver.setCodecPreferences(codecs);
+  }
+
   private async whipOffer(src: MediaStream) {
     if (!this.peerConnection) {
       return;
     }
     for (const track of src.getTracks()) {
       this.logMessage(`Adding local ${track.kind} track`);
-      this.peerConnection.addTransceiver(track, {
+      const transceiver = this.peerConnection.addTransceiver(track, {
         direction: "sendonly",
       });
+      if (track.kind === "video") {
+        this.setVideoCodecPreference(transceiver);
+      }
     }
     await this.doSignaling();
   }
