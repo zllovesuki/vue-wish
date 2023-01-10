@@ -178,7 +178,8 @@ onUnmounted(async () => {
           :srcObject="Media"
           :controls="ShowControl"
           class="w-full h-auto"
-          autoplay="true"
+          autoplay
+          playsinline
         />
       </section>
 

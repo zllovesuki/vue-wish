@@ -612,6 +612,7 @@ onUnmounted(async () => {
                       ref="VideoPreview"
                       v-show="VideoSource && VideoEnabled"
                       autoplay
+                      playsinline
                     ></video>
                   </div>
                 </div>
